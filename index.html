@@ -1250,7 +1250,7 @@
     applyRoll(selected);
   });
 
-  s  heightLockToggle.addEventListener('change', function(){
+  heightLockToggle.addEventListener('change', function(){
     if(!selected) return;
     selected.heightLocked = heightLockToggle.checked;
     heightLockOptions.style.display = selected.heightLocked ? 'block' : 'none';
