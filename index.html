@@ -1204,15 +1204,28 @@ updateDistanceReadouts(selected);
   }
 
   function placeOnWall(art, wall, point){
-    var y = Math.max(art.h/2*0.2, Math.min(ceilingHeight-0.02, point.y));
-    var pos = point.clone(); pos.y = y;
-    // 그림이 벽 안으로 파고들지 않도록 두께의 절반 + 작은 여유만큼 벽에서 띄웁니다.
-    pos.addScaledVector(wall.inward, Math.max(0.005, art.d/2 + 0.005));
-    art.group.position.copy(pos);
-    art.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), wall.inward);
-    art.snapped = true; art.wall = wall;
-    applyRoll(art);
-  }
+  var y = Math.max(
+    art.h / 2 * 0.2,
+    Math.min(ceilingHeight - 0.02, point.y)
+  );
+
+  var pos = point.clone();
+  pos.y = y;
+
+  pos.addScaledVector(wall.inward, 0.02);
+
+  art.group.position.copy(pos);
+
+  art.baseQuat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0,0,1),
+    wall.inward
+  );
+
+  art.snapped = true;
+  art.wall = wall;
+
+  applyRoll(art);
+}
 
   function applyRoll(art){
     var rollQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), THREE.MathUtils.degToRad(art.roll));
