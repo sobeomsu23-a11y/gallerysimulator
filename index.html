@@ -1058,6 +1058,7 @@
       dragging = false;
       dragKind = null;
       draggedFigure = null;
+      draggedIslandWall = null;
     });
 
     dom.addEventListener('wheel', function(e){
@@ -1261,6 +1262,25 @@ function doDrag(e){
   // 인체 모형 이동
   // ---------------------------------------------
 
+  if(dragKind === 'islandwall'){
+
+  if(!draggedIslandWall) return;
+
+  var wallPoint = new THREE.Vector3();
+
+  if(raycaster.ray.intersectPlane(dragPlane, wallPoint)){
+
+    draggedIslandWall.group.position.x = wallPoint.x;
+    draggedIslandWall.group.position.z = wallPoint.z;
+    draggedIslandWall.group.position.y = 0;
+
+    updateIslandWallTransformData(
+      draggedIslandWall
+    );
+  }
+
+  return;
+}
   if(dragKind === 'figure'){
 
     if(!draggedFigure) return;
