@@ -169,6 +169,11 @@
       <div class="brand-sub">평면도를 업로드해 공간을 만들고, 그림을 걸어보세요.</div>
     </div>
 
+    <div class="panel-section">
+      <button class="btn" id="btn-load-scene">저장된 공간 불러오기 (.json)</button>
+      <input type="file" id="scene-file-input" accept="application/json,.json">
+    </div>
+
     <div class="panel-section" id="step1">
       <div class="sec-label"><span class="num">1</span>평면도 업로드 &amp; 바닥 그리기</div>
 
@@ -286,7 +291,8 @@
     </div>
 
     <div class="footer-actions hidden" id="step-footer">
-      <button class="btn" id="btn-screenshot">스크린샷 저장</button>
+      <button class="btn" id="btn-save-scene">공간 저장하기 (.json)</button>
+      <button class="btn" id="btn-screenshot" style="margin-top:8px;">스크린샷 저장</button>
       <button class="btn btn-ghost" id="btn-restart" style="width:100%;margin-top:8px;">공간 새로 만들기</button>
     </div>
   </div>
@@ -305,7 +311,7 @@
     <div id="three-container" class="hidden"></div>
 
     <div class="viewport-hud hidden" id="vp-hud">
-      드래그: <b>시점 회전</b> · 휠: <b>확대/축소</b> · 그림/인체모형 클릭 후 드래그: <b>이동</b>
+      드래그: <b>시점 회전</b> · Shift+드래그: <b>평행 이동</b> · 휠: <b>확대/축소</b> · 그림/인체모형 클릭 후 드래그: <b>이동</b>
     </div>
 
     <div id="dist-hud">
@@ -360,6 +366,7 @@
   var target = new THREE.Vector3(0,1.5,0);
   var spherical = { radius: 10, theta: Math.PI/4, phi: Math.PI/2.6 };
   var orbiting = false, lastMouse = {x:0,y:0};
+  var panning = false;
 
   var walls = [];
   var floorMesh = null;
@@ -401,6 +408,7 @@
   var refBottomBtn = $('ref-bottom'), refCenterBtn = $('ref-center'), refTopBtn = $('ref-top');
   var distHud = $('dist-hud'), hudBottom = $('hud-bottom'), hudCenter = $('hud-center'), hudTop = $('hud-top');
   var btnScreenshot = $('btn-screenshot'), btnRestart = $('btn-restart');
+  var btnSaveScene = $('btn-save-scene'), btnLoadScene = $('btn-load-scene'), sceneFileInput = $('scene-file-input');
   var screenshotFlash = $('screenshot-flash');
   var btnAddMale = $('btn-add-male'), btnAddFemale = $('btn-add-female'), btnAddChild = $('btn-add-child');
   var figureList = $('figure-list');
@@ -935,6 +943,21 @@
     camera.lookAt(target);
   }
 
+  function panCamera(dxPixels, dyPixels){
+    var rect = renderer.domElement.getBoundingClientRect();
+    var distance = spherical.radius;
+    var vFOV = camera.fov * Math.PI/180;
+    var visibleHeight = 2*Math.tan(vFOV/2)*distance;
+    var visibleWidth = visibleHeight * camera.aspect;
+    var right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+    var up = new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion);
+    var moveX = -(dxPixels/rect.width) * visibleWidth;
+    var moveY = (dyPixels/rect.height) * visibleHeight;
+    target.addScaledVector(right, moveX);
+    target.addScaledVector(up, moveY);
+    updateCamera();
+  }
+
   /* =========================================================
      INTERACTION
   ========================================================= */
@@ -942,6 +965,12 @@
     var dom = renderer.domElement;
 
     dom.addEventListener('pointerdown', function(e){
+      if(e.shiftKey){
+        panning = true;
+        lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+        e.preventDefault();
+        return;
+      }
       var rect = dom.getBoundingClientRect();
       mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
       mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
@@ -960,6 +989,30 @@
 
       orbiting = true;
       lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+    });
+
+    window.addEventListener('pointermove', function(e){
+      if(panning){
+        panCamera(e.clientX-lastMouse.x, e.clientY-lastMouse.y);
+        lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+        return;
+      }
+      if(dragging){ doDrag(e); return; }
+      if(!orbiting) return;
+      var dx = e.clientX-lastMouse.x, dy = e.clientY-lastMouse.y;
+      lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+      spherical.theta -= dx*0.006;
+      spherical.phi -= dy*0.006;
+      spherical.phi = Math.max(0.15, Math.min(Math.PI-0.15, spherical.phi));
+      updateCamera();
+    });
+
+    window.addEventListener('pointerup', function(){
+      orbiting = false;
+      panning = false;
+      dragging = false;
+      dragKind = null;
+      draggedFigure = null;
     });
 
     window.addEventListener('pointermove', function(e){
@@ -1415,6 +1468,121 @@
 
     figureTexCache[type] = cv;
     return cv;
+  }
+
+  function serializeScene(){
+    var roomPoints = walls.map(function(w){ return {x:w.p1.x, y:w.p1.z}; });
+    return {
+      version: 1,
+      room: { points: roomPoints, ceilingHeight: ceilingHeight },
+      artworks: artworks.map(function(a){
+        var img = a.plane.material[4].map.image;
+        return {
+          name: a.name,
+          dataUrl: img.src,
+          w: a.w, h: a.h, d: a.d,
+          position: { x:a.group.position.x, y:a.group.position.y, z:a.group.position.z },
+          quaternion: { x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w },
+          roll: a.roll, snapped: a.snapped,
+          heightLocked: a.heightLocked, heightLockRef: a.heightLockRef, heightLockValue: a.heightLockValue
+        };
+      }),
+      figures: figures.map(function(f){
+        return { type: f.type, position: { x:f.sprite.position.x, z:f.sprite.position.z } };
+      })
+    };
+  }
+
+  btnSaveScene.addEventListener('click', function(){
+    if(!scene || !walls.length){ alert('먼저 3D 공간을 생성해주세요.'); return; }
+    var data = serializeScene();
+    var blob = new Blob([JSON.stringify(data)], { type:'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'exhibition-scene-'+Date.now()+'.json';
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  });
+
+  btnLoadScene.addEventListener('click', function(){ sceneFileInput.click(); });
+
+  sceneFileInput.addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var data;
+      try{ data = JSON.parse(ev.target.result); }
+      catch(err){ alert('파일을 읽을 수 없습니다. 올바른 저장 파일인지 확인해주세요.'); return; }
+      loadSceneFromData(data);
+    };
+    reader.readAsText(file);
+    sceneFileInput.value = '';
+  });
+
+  function loadSceneFromData(data){
+    if(!data || !data.room || !data.room.points){ alert('파일 형식이 올바르지 않습니다.'); return; }
+
+    var pts2d = data.room.points.map(function(p){ return new THREE.Vector2(p.x, p.y); });
+    ceilingHeight = data.room.ceilingHeight || 3;
+
+    floorplanStage.classList.add('hidden');
+    threeContainerHolder.classList.remove('hidden');
+    step2.classList.remove('hidden');
+    step3.classList.remove('hidden');
+    stepFigures.classList.remove('hidden');
+    stepFooter.classList.remove('hidden');
+    vpHud.classList.remove('hidden');
+
+    buildRoom(pts2d);
+    onResize();
+    requestAnimationFrame(function(){ onResize(); animate(); });
+
+    var artPromises = (data.artworks||[]).map(function(saved){
+      return new Promise(function(resolve){
+        var image = new Image();
+        image.onload = function(){
+          createArtwork(image, saved.dataUrl, saved.name, saved.w, saved.h);
+          var newArt = artworks[artworks.length-1];
+          if(saved.d) resizeArtworkDepth(newArt, saved.d);
+          newArt.group.position.set(saved.position.x, saved.position.y, saved.position.z);
+          newArt.group.quaternion.set(saved.quaternion.x, saved.quaternion.y, saved.quaternion.z, saved.quaternion.w);
+          newArt.roll = saved.roll||0;
+          newArt.snapped = !!saved.snapped;
+          newArt.heightLocked = !!saved.heightLocked;
+          newArt.heightLockRef = saved.heightLockRef||'bottom';
+          newArt.heightLockValue = saved.heightLockValue||0;
+          if(newArt.snapped){
+            var bestWall=null, bestD=Infinity;
+            walls.forEach(function(w){
+              var d = Math.abs(newArt.group.position.clone().sub(w.p1).dot(w.inward));
+              if(d<bestD){ bestD=d; bestWall=w; }
+            });
+            if(bestWall){
+              newArt.wall = bestWall;
+              newArt.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), bestWall.inward);
+            }
+          }
+          resolve();
+        };
+        image.src = saved.dataUrl;
+      });
+    });
+
+    Promise.all(artPromises).then(function(){
+      (data.figures||[]).forEach(function(f){
+        addFigure(f.type);
+        var newFig = figures[figures.length-1];
+        newFig.sprite.position.x = f.position.x;
+        newFig.sprite.position.z = f.position.z;
+      });
+      updateArtworkListUI();
+      updateFigureListUI();
+      selected = null;
+      selectedPanel.classList.remove('show');
+      distHud.classList.remove('show');
+    });
   }
 
   function addFigure(type){
