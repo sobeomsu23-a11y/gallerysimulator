@@ -1101,6 +1101,21 @@
   draggedFigure = fig;
 }
 
+  function startDragIslandWall(iw){
+
+  dragging = true;
+  orbiting = false;
+  dragKind = 'islandwall';
+
+  draggedIslandWall = iw;
+
+  // 바닥면을 기준으로 독립 벽을 이동
+  dragPlane.setFromNormalAndCoplanarPoint(
+    new THREE.Vector3(0,1,0),
+    iw.group.position
+  );
+}
+
 
 function doDrag(e){
 
