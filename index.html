@@ -56,6 +56,7 @@
     width:100%;
   }
   .btn:hover{border-color:var(--accent);}
+  .btn.active{border-color:var(--accent);background:var(--accent-dim);}
   .btn:disabled{opacity:.5;cursor:not-allowed;}
   .btn-primary{background:var(--accent);border-color:var(--accent);color:#171208;font-weight:600;}
   .btn-primary:hover{background:#dbb457;}
@@ -253,6 +254,25 @@
       <input type="range" id="rotate-slider" min="-180" max="180" value="0" step="1">
       <div class="slider-val"><span id="rotate-val">0</span>°</div>
 
+      <div class="toggle-row" style="margin-top:14px;">
+        <span class="tlabel">높이 고정</span>
+        <label class="switch">
+          <input type="checkbox" id="height-lock-toggle">
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div id="height-lock-options" style="display:none;">
+        <label class="field-label">기준점</label>
+        <div class="btn-row">
+          <button class="btn" id="ref-bottom" data-ref="bottom">아랫변</button>
+          <button class="btn" id="ref-center" data-ref="center">중앙</button>
+          <button class="btn" id="ref-top" data-ref="top">윗변</button>
+        </div>
+        <label class="field-label">고정 높이 (cm, 바닥 기준)</label>
+        <input type="number" id="height-lock-cm" min="0" step="0.5">
+        <div class="hint">드래그하거나 크기를 바꿔도 선택한 기준점이 이 높이에 고정됩니다.</div>
+      </div>
+
       <label class="field-label">바닥 기준 높이</label>
       <div class="dist-row"><span>아랫변</span><span class="v" id="dist-bottom">–</span></div>
       <div class="dist-row"><span>중앙</span><span class="v" id="dist-center">–</span></div>
@@ -373,6 +393,8 @@
   var rotateSlider = $('rotate-slider'), rotateVal = $('rotate-val');
   var distBottom = $('dist-bottom'), distCenter = $('dist-center'), distTop = $('dist-top');
   var btnDeleteArt = $('btn-delete-art');
+  var heightLockToggle = $('height-lock-toggle'), heightLockOptions = $('height-lock-options'), heightLockCm = $('height-lock-cm');
+  var refBottomBtn = $('ref-bottom'), refCenterBtn = $('ref-center'), refTopBtn = $('ref-top');
   var distHud = $('dist-hud'), hudBottom = $('hud-bottom'), hudCenter = $('hud-center'), hudTop = $('hud-top');
   var btnScreenshot = $('btn-screenshot'), btnRestart = $('btn-restart');
   var screenshotFlash = $('screenshot-flash');
@@ -1010,7 +1032,7 @@
         selected.snapped = false;
         applyRoll(selected);
       }
-    }
+    if(selected.heightLocked) applyHeightLock(selected);
     updateDistanceReadouts(selected);
   }
 
@@ -1034,6 +1056,17 @@
       var baseQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), camDir.clone().negate());
       art.group.quaternion.copy(baseQ).multiply(rollQ);
     }
+  }
+
+  function applyHeightLock(art){
+    if(!art.heightLocked) return;
+    var v = art.heightLockValue;
+    var y;
+    if(art.heightLockRef === 'bottom') y = v + art.h/2;
+    else if(art.heightLockRef === 'top') y = v - art.h/2;
+    else y = v;
+    y = Math.max(art.h/2*0.05, Math.min(ceilingHeight-0.02, y));
+    art.group.position.y = y;
   }
 
   /* =========================================================
@@ -1133,7 +1166,7 @@
 
     scene.add(group);
 
-    var art = { group:group, plane:plane, frame:frame, w:w, h:h, name:name, roll:0, snapped:false, id:'art'+(artCount++) };
+    var art = { group:group, plane:plane, frame:frame, w:w, h:h, name:name, roll:0, snapped:false, heightLocked:false, heightLockRef:'bottom', heightLockValue:0, id:'art'+(artCount++) };
     artworks.push(art);
 
     if(walls.length){
@@ -1158,6 +1191,7 @@
     art.plane.geometry = new THREE.PlaneGeometry(wM,hM);
     art.frame.geometry.dispose();
     art.frame.geometry = new THREE.PlaneGeometry(wM+0.06,hM+0.06);
+    applyHeightLock(art);
   }
 
   function updateArtworkListUI(){
@@ -1178,6 +1212,12 @@
     });
   }
 
+  function setHeightLockRefUI(ref){
+    [refBottomBtn, refCenterBtn, refTopBtn].forEach(function(btn){
+      btn.classList.toggle('active', btn.dataset.ref === ref);
+    });
+  }
+
   function selectArtwork(a){
     selected = a;
     selName.textContent = a.name;
@@ -1186,6 +1226,10 @@
     rotateSlider.value = a.roll; rotateVal.textContent = a.roll;
     selWcm.value = (a.w*100).toFixed(1);
     selHcm.value = (a.h*100).toFixed(1);
+    heightLockToggle.checked = a.heightLocked;
+    heightLockOptions.style.display = a.heightLocked ? 'block' : 'none';
+    setHeightLockRefUI(a.heightLockRef);
+    heightLockCm.value = (a.heightLockValue*100).toFixed(1);
     updateArtworkListUI();
     updateDistanceReadouts(a);
   }
@@ -1204,6 +1248,42 @@
     selected.roll = parseFloat(rotateSlider.value);
     rotateVal.textContent = selected.roll;
     applyRoll(selected);
+  });
+
+  s  heightLockToggle.addEventListener('change', function(){
+    if(!selected) return;
+    selected.heightLocked = heightLockToggle.checked;
+    heightLockOptions.style.display = selected.heightLocked ? 'block' : 'none';
+    if(selected.heightLocked){
+      var y = selected.group.position.y;
+      var ref = selected.heightLockRef;
+      var v = ref==='bottom' ? Math.max(y-selected.h/2,0) : ref==='top' ? y+selected.h/2 : y;
+      selected.heightLockValue = v;
+      heightLockCm.value = (v*100).toFixed(1);
+      applyHeightLock(selected);
+      updateDistanceReadouts(selected);
+    }
+  });
+
+  [refBottomBtn, refCenterBtn, refTopBtn].forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(!selected) return;
+      var ref = btn.dataset.ref;
+      var prevRef = selected.heightLockRef;
+      var y = selected.group.position.y;
+      var currentV = prevRef==='bottom' ? Math.max(y-selected.h/2,0) : prevRef==='top' ? y+selected.h/2 : y;
+      selected.heightLockRef = ref;
+      selected.heightLockValue = currentV;
+      setHeightLockRefUI(ref);
+      heightLockCm.value = (currentV*100).toFixed(1);
+      if(selected.heightLocked){ applyHeightLock(selected); updateDistanceReadouts(selected); }
+    });
+  });
+
+  heightLockCm.addEventListener('input', function(){
+    if(!selected) return;
+    selected.heightLockValue = (parseFloat(heightLockCm.value)||0)/100;
+    if(selected.heightLocked){ applyHeightLock(selected); updateDistanceReadouts(selected); }
   });
 
   selWcm.addEventListener('input', function(){
