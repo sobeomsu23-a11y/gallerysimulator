@@ -338,7 +338,8 @@
   var orbiting = false, lastMouse = {x:0,y:0};
 
   var walls = [];
-  var floorMesh = null;
+   var floorMesh = null;
+  var keyLight = null;
   var ceilingHeight = 3;
   var roomCentroid = new THREE.Vector3();
 
@@ -827,6 +828,7 @@
     var floorMat = new THREE.MeshStandardMaterial({ color:0xcfcac0, side:THREE.DoubleSide, roughness:0.9 });
     floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.userData.isFloor = true;
+    floorMesh.receiveShadow = true;
     scene.add(floorMesh);
 
     var wallMat = new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 });
@@ -849,6 +851,8 @@
       wallMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(nx,0,nz));
       wallMesh.position.set(midx, ceilingHeight/2, midz);
       wallMesh.userData.isWall = true;
+      wallMesh.receiveShadow = true;
+      wallMesh.castShadow = true;
       scene.add(wallMesh);
 
       walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz) });
@@ -859,6 +863,20 @@
     spherical.radius = Math.max(maxDim*1.1, 4);
     target.set(cx, ceilingHeight*0.45, cz);
     updateCamera();
+
+    if(keyLight){
+      var shadowExt = Math.max(maxDim, ceilingHeight) * 0.8 + 2;
+      keyLight.shadow.camera.left = -shadowExt;
+      keyLight.shadow.camera.right = shadowExt;
+      keyLight.shadow.camera.top = shadowExt;
+      keyLight.shadow.camera.bottom = -shadowExt;
+      keyLight.shadow.camera.near = 0.5;
+      keyLight.shadow.camera.far = shadowExt*4 + 20;
+      keyLight.position.set(cx + maxDim*0.5, ceilingHeight*2.2 + maxDim*0.3, cz + maxDim*0.4);
+      keyLight.target.position.set(cx, 0, cz);
+      keyLight.shadow.camera.updateProjectionMatrix();
+    }
+  }
   }
 
   function initScene(){
@@ -870,13 +888,21 @@
     renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
     renderer.setSize(Math.max(threeContainerHolder.clientWidth,1), Math.max(threeContainerHolder.clientHeight,1));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     threeContainerHolder.appendChild(renderer.domElement);
 
-    var hemi = new THREE.HemisphereLight(0xffffff, 0x555044, 0.9);
+    var hemi = new THREE.HemisphereLight(0xffffff, 0x4a4438, 0.55);
     scene.add(hemi);
-    var dir1 = new THREE.DirectionalLight(0xffffff, 0.65); dir1.position.set(6,10,4); scene.add(dir1);
-    var dir2 = new THREE.DirectionalLight(0xffffff, 0.35); dir2.position.set(-6,6,-4); scene.add(dir2);
-    var amb = new THREE.AmbientLight(0xffffff, 0.25); scene.add(amb);
+    keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    keyLight.position.set(6,10,4);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048,2048);
+    keyLight.shadow.bias = -0.0015;
+    scene.add(keyLight);
+    scene.add(keyLight.target);
+    var dir2 = new THREE.DirectionalLight(0xffffff, 0.25); dir2.position.set(-6,6,-4); scene.add(dir2);
+    var amb = new THREE.AmbientLight(0xffffff, 0.18); scene.add(amb);
 
     attachInteraction();
     window.addEventListener('resize', onResize);
