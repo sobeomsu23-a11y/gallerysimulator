@@ -829,6 +829,13 @@
     floorMesh.userData.isFloor = true;
     scene.add(floorMesh);
 
+    var edgeLineMat = new THREE.LineBasicMaterial({ color: 0x1a1a1a });
+    var floorEdgeGeo = new THREE.EdgesGeometry(floorGeo);
+    var floorEdges = new THREE.LineSegments(floorEdgeGeo, edgeLineMat);
+    floorEdges.position.y = 0.003;
+    floorEdges.userData.isFloor = true;
+    scene.add(floorEdges);
+
     var wallMat = new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 });
     var n = pts2d.length;
     for(var i=0;i<n;i++){
@@ -851,6 +858,11 @@
       wallMesh.userData.isWall = true;
       scene.add(wallMesh);
 
+      var wallEdgeGeo = new THREE.EdgesGeometry(wallGeo);
+      var wallEdges = new THREE.LineSegments(wallEdgeGeo, edgeLineMat);
+      wallEdges.position.z = 0.003;
+      wallMesh.add(wallEdges);
+
       walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz) });
     }
 
@@ -863,7 +875,7 @@
 
   function initScene(){
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xdedad2);
+    scene.background = new THREE.Color(0xffffff);
 
     camera = new THREE.PerspectiveCamera(55, Math.max(threeContainerHolder.clientWidth,1)/Math.max(threeContainerHolder.clientHeight,1), 0.05, 500);
 
