@@ -1154,11 +1154,8 @@
     if(THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
 
     var group = new THREE.Group();
-    var frameGeo = new THREE.PlaneGeometry(w+0.06, h+0.06);
-    var frameMat = new THREE.MeshStandardMaterial({ color:0x2a2a2a, roughness:0.6 });
-    var frame = new THREE.Mesh(frameGeo, frameMat);
-    frame.position.z = -0.008;
-    group.add(frame);
+
+    var planeGeo = new THREE.PlaneGeometry(w,h);
 
     var planeGeo = new THREE.PlaneGeometry(w,h);
     var planeMat = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide });
@@ -1167,7 +1164,7 @@
 
     scene.add(group);
 
-    var art = { group:group, plane:plane, frame:frame, w:w, h:h, name:name, roll:0, snapped:false, heightLocked:false, heightLockRef:'bottom', heightLockValue:0, id:'art'+(artCount++) };
+    var art = { group:group, plane:plane, w:w, h:h, name:name, roll:0, snapped:false, heightLocked:false, heightLockRef:'bottom', heightLockValue:0, id:'art'+(artCount++) };
     artworks.push(art);
 
     if(walls.length){
@@ -1190,8 +1187,6 @@
     art.w=wM; art.h=hM;
     art.plane.geometry.dispose();
     art.plane.geometry = new THREE.PlaneGeometry(wM,hM);
-    art.frame.geometry.dispose();
-    art.frame.geometry = new THREE.PlaneGeometry(wM+0.06,hM+0.06);
     applyHeightLock(art);
   }
 
