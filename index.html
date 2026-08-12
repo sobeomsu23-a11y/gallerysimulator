@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전시공간 시뮬레이터</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --ink:#eae7e0;
+    --ink-dim:#9c9892;
+    --panel:#17171a;
+    --panel-2:#1f1f23;
+    --line: rgba(234,231,224,0.10);
+    --accent:#c9a24b;
+    --accent-dim: rgba(201,162,75,0.18);
+    --danger:#c0645a;
+    --viewport-bg:#dedad2;
+    --radius:2px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--panel);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;overflow:hidden;}
+  #app{display:flex;height:100vh;width:100vw;}
+
+  #sidebar{
+    width:340px;min-width:340px;height:100%;
+    background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;
+    overflow-y:auto;
+  }
+  .brand{ padding:22px 22px 16px 22px;border-bottom:1px solid var(--line); }
+  .brand-eyebrow{font-size:10.5px;letter-spacing:.18em;color:var(--accent);text-transform:uppercase;margin-bottom:6px;}
+  .brand-title{font-size:18px;font-weight:600;letter-spacing:-0.01em;}
+  .brand-sub{font-size:12px;color:var(--ink-dim);margin-top:4px;line-height:1.5;}
+
+  .panel-section{padding:20px 22px;border-bottom:1px solid var(--line);}
+  .panel-section.hidden{display:none;}
+  .sec-label{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+  .sec-label .num{width:16px;height:16px;border:1px solid var(--ink-dim);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--ink-dim);}
+
+  label.field-label{display:block;font-size:12px;color:var(--ink-dim);margin:12px 0 6px 0;}
+  label.field-label:first-child{margin-top:0;}
+  input[type=text], input[type=number]{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    padding:8px 10px;font-size:13px;border-radius:var(--radius);outline:none;
+  }
+  input[type=number]:focus, input[type=text]:focus{border-color:var(--accent);}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:9px 14px;font-size:12.5px;letter-spacing:.02em;
+    background:transparent;border:1px solid var(--line);color:var(--ink);
+    border-radius:var(--radius);cursor:pointer;transition:border-color .15s,background .15s;
+    width:100%;
+  }
+  .btn:hover{border-color:var(--accent);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#171208;font-weight:600;}
+  .btn-primary:hover{background:#dbb457;}
+  .btn-primary:disabled{background:var(--panel-2);border-color:var(--line);color:var(--ink-dim);cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;margin-top:10px;}
+  .btn-row .btn{flex:1;}
+  .btn-danger:hover{border-color:var(--danger);color:var(--danger);}
+  .btn-ghost{border:none;color:var(--ink-dim);width:auto;padding:4px 6px;}
+  .btn-ghost:hover{color:var(--ink);}
+
+  input[type=file]{display:none;}
+  .upload-drop{
+    border:1px dashed var(--line);border-radius:var(--radius);padding:18px 14px;text-align:center;
+    cursor:pointer;color:var(--ink-dim);font-size:12px;transition:border-color .15s;
+  }
+  .upload-drop:hover{border-color:var(--accent);color:var(--ink);}
+
+  .hint{font-size:11px;color:var(--ink-dim);line-height:1.6;margin-top:10px;}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:2px 0;}
+  .toggle-row .tlabel{font-size:12.5px;}
+  .switch{position:relative;width:36px;height:20px;flex:none;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider-tg{position:absolute;cursor:pointer;inset:0;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;transition:.15s;}
+  .slider-tg:before{content:"";position:absolute;height:14px;width:14px;left:2px;top:2px;background:var(--ink-dim);border-radius:50%;transition:.15s;}
+  .switch input:checked + .slider-tg{background:var(--accent-dim);border-color:var(--accent);}
+  .switch input:checked + .slider-tg:before{transform:translateX(16px);background:var(--accent);}
+
+  #artwork-list, #figure-list{display:flex;flex-direction:column;gap:8px;margin-top:12px;max-height:220px;overflow-y:auto;}
+  .art-item{
+    display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:var(--radius);
+    cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .art-item:hover{border-color:var(--ink-dim);}
+  .art-item.selected{border-color:var(--accent);background:var(--accent-dim);}
+  .art-item img{width:34px;height:34px;object-fit:cover;border-radius:1px;flex:none;background:#000;}
+  .fig-swatch{width:18px;height:18px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,0.2);}
+  .art-item .art-name{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .art-item .art-del{font-size:14px;color:var(--ink-dim);}
+  .art-item .art-del:hover{color:var(--danger);}
+
+  #selected-panel{display:none;}
+  #selected-panel.show{display:block;}
+  .dist-row{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line);color:var(--ink-dim);}
+  .dist-row span.v{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600;}
+  .dist-row:last-child{border-bottom:none;}
+  #rotate-slider{width:100%;margin-top:8px;accent-color:var(--accent);}
+  .slider-val{font-size:11px;color:var(--ink-dim);text-align:right;margin-top:2px;}
+  .size-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  .footer-actions{margin-top:auto;padding:18px 22px;border-top:1px solid var(--line);}
+
+  #viewport{flex:1;position:relative;background:var(--viewport-bg);overflow:hidden;}
+
+  #floorplan-stage{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:14px;
+  }
+  #floorplan-stage.hidden{display:none;}
+  #fp-canvas-wrap{position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.28);}
+  #fp-canvas{display:block;background:#fff;cursor:crosshair;touch-action:none;}
+  #fp-empty{ color:#8f8b83;text-align:center;font-size:13px;line-height:1.8; }
+  #fp-empty b{color:#4a463f;display:block;font-size:15px;margin-bottom:6px;font-weight:600;}
+
+  #three-container{position:absolute;inset:0;}
+  #three-container.hidden{display:none;}
+  #three-container canvas{display:block;}
+
+  .viewport-hud{
+    position:absolute;top:18px;left:18px;background:rgba(23,23,26,0.82);backdrop-filter:blur(6px);
+    color:var(--ink);padding:10px 14px;border-radius:var(--radius);font-size:11.5px;line-height:1.7;
+    border:1px solid rgba(255,255,255,0.08);pointer-events:none;
+  }
+  .viewport-hud b{color:var(--accent);}
+
+  #dist-hud{
+    position:absolute;top:18px;right:18px;background:rgba(23,23,26,0.88);backdrop-filter:blur(6px);
+    color:var(--ink);padding:12px 16px;border-radius:var(--radius);font-size:12px;
+    border:1px solid rgba(255,255,255,0.08);display:none;min-width:190px;
+  }
+  #dist-hud.show{display:block;}
+  #dist-hud .dh-title{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px;}
+  #dist-hud .dh-row{display:flex;justify-content:space-between;padding:3px 0;}
+  #dist-hud .dh-row span.v{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;}
+
+  #screenshot-flash{ position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s; }
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(10,10,10,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
+  .modal-overlay.hidden{display:none;}
+  .modal-box{width:300px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+  .modal-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+  .modal-sub{font-size:11.5px;color:var(--ink-dim);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .modal-preview-wrap{width:100%;height:120px;border:1px solid var(--line);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0e0e10;margin-bottom:4px;}
+  .modal-preview-wrap img{max-width:100%;max-height:100%;object-fit:contain;}
+  .modal-lock-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-dim);margin-top:12px;}
+  .modal-lock-row input{width:auto;}
+
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sidebar">
+    <div class="brand">
+      <div class="brand-eyebrow">Exhibition Simulator</div>
+      <div class="brand-title">전시공간 시뮬레이터</div>
+      <div class="brand-sub">평면도를 업로드해 공간을 만들고, 그림을 걸어보세요.</div>
+    </div>
+
+    <div class="panel-section" id="step1">
+      <div class="sec-label"><span class="num">1</span>평면도 업로드 &amp; 바닥 그리기</div>
+
+      <div class="upload-drop" id="fp-upload-btn">
+        평면 도면 이미지를 선택하세요<br><span style="opacity:.7">(JPG / PNG)</span>
+      </div>
+      <input type="file" id="fp-file-input" accept="image/*">
+
+      <div id="auto-detect-row" style="display:none;">
+        <label class="field-label">벽 인식 두께 기준 (px)</label>
+        <input type="number" id="wall-thickness-px" value="4" min="1" max="14" step="1">
+        <div class="hint" style="margin-top:6px;">이 값보다 얇은 선(치수선·해칭·글자)은 무시하고, 이보다 두꺼운 벽 선만 벽으로 인식합니다. 결과가 이상하면 값을 올리거나 내려 다시 시도해보세요.</div>
+        <button class="btn" id="btn-auto-detect" style="margin-top:10px;">자동으로 바닥 모양 인식</button>
+      </div>
+
+      <div class="hint" id="trace-hint" style="display:none;">
+        도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다.
+      </div>
+
+      <div class="btn-row" id="trace-controls" style="display:none;">
+        <button class="btn" id="btn-reset-points">점 초기화</button>
+        <button class="btn btn-primary" id="btn-finish-poly" disabled>도형 완성</button>
+      </div>
+
+      <div id="scale-inputs" style="display:none;">
+        <label class="field-label">이 공간의 실제 가로 길이 (m)</label>
+        <input type="number" id="real-width" value="10" step="0.1" min="0.5">
+        <label class="field-label">천장(벽) 높이 (m)</label>
+        <input type="number" id="ceiling-height" value="3" step="0.1" min="1.5">
+        <div class="hint">도면에 표기된 실측 수치를 확인해 입력하거나, 원하는 값으로 직접 설정하세요.</div>
+        <button class="btn btn-primary" id="btn-build-3d" style="margin-top:14px;">3D 공간 생성</button>
+      </div>
+    </div>
+
+    <div class="panel-section hidden" id="step2">
+      <div class="sec-label"><span class="num">2</span>그림 추가</div>
+      <div class="upload-drop" id="art-upload-btn">그림 이미지 추가하기</div>
+      <input type="file" id="art-file-input" accept="image/*" multiple>
+      <div class="hint">추가할 때마다 실제 크기(cm)를 입력하는 창이 열립니다.</div>
+      <div id="artwork-list"></div>
+    </div>
+
+    <div class="panel-section hidden" id="step3">
+      <div class="sec-label"><span class="num">3</span>배치 옵션</div>
+      <div class="toggle-row">
+        <span class="tlabel">벽에 자석처럼 붙이기</span>
+        <label class="switch">
+          <input type="checkbox" id="snap-toggle" checked>
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div class="hint">켜두면 그림을 드래그할 때 가장 가까운 벽면에 자동으로 달라붙습니다. 끄면 공간 안 어디든 자유롭게 옮길 수 있어요.</div>
+    </div>
+
+    <div class="panel-section hidden" id="step-figures">
+      <div class="sec-label"><span class="num">4</span>인체 모형 추가</div>
+      <div class="btn-row">
+        <button class="btn" id="btn-add-male">성인 남성</button>
+        <button class="btn" id="btn-add-female">성인 여성</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="btn-add-child">어린이</button>
+      </div>
+      <div class="hint">평균 신장 참고용 모형입니다 (성인 남성 약 172cm · 성인 여성 약 160cm · 어린이 약 115cm, 6~7세 기준). 3D 공간에서 클릭 후 드래그하면 바닥 위에서 자유롭게 옮길 수 있어요.</div>
+      <div id="figure-list"></div>
+    </div>
+
+    <div class="panel-section hidden" id="selected-panel">
+      <div class="sec-label"><span class="num">5</span>선택한 그림 — <span id="sel-name" style="color:var(--ink);text-transform:none;letter-spacing:0;"></span></div>
+
+      <div class="size-grid">
+        <div>
+          <label class="field-label">가로 (cm)</label>
+          <input type="number" id="sel-w-cm" min="1" step="0.5">
+        </div>
+        <div>
+          <label class="field-label">세로 (cm)</label>
+          <input type="number" id="sel-h-cm" min="1" step="0.5">
+        </div>
+      </div>
+
+      <label class="field-label">회전</label>
+      <input type="range" id="rotate-slider" min="-180" max="180" value="0" step="1">
+      <div class="slider-val"><span id="rotate-val">0</span>°</div>
+
+      <label class="field-label">바닥 기준 높이</label>
+      <div class="dist-row"><span>아랫변</span><span class="v" id="dist-bottom">–</span></div>
+      <div class="dist-row"><span>중앙</span><span class="v" id="dist-center">–</span></div>
+      <div class="dist-row"><span>윗변</span><span class="v" id="dist-top">–</span></div>
+
+      <button class="btn btn-danger" id="btn-delete-art" style="margin-top:14px;">이 그림 삭제</button>
+    </div>
+
+    <div class="footer-actions hidden" id="step-footer">
+      <button class="btn" id="btn-screenshot">스크린샷 저장</button>
+      <button class="btn btn-ghost" id="btn-restart" style="width:100%;margin-top:8px;">공간 새로 만들기</button>
+    </div>
+  </div>
+
+  <div id="viewport">
+    <div id="floorplan-stage">
+      <div id="fp-empty">
+        <b>평면도를 업로드하세요</b>
+        왼쪽에서 도면 이미지를 선택하면<br>이 화면에 표시됩니다.
+      </div>
+      <div id="fp-canvas-wrap" style="display:none;">
+        <canvas id="fp-canvas"></canvas>
+      </div>
+    </div>
+
+    <div id="three-container" class="hidden"></div>
+
+    <div class="viewport-hud hidden" id="vp-hud">
+      드래그: <b>시점 회전</b> · 휠: <b>확대/축소</b> · 그림/인체모형 클릭 후 드래그: <b>이동</b>
+    </div>
+
+    <div id="dist-hud">
+      <div class="dh-title">바닥 — 그림 거리</div>
+      <div class="dh-row"><span>아랫변</span><span class="v" id="hud-bottom">–</span></div>
+      <div class="dh-row"><span>중앙</span><span class="v" id="hud-center">–</span></div>
+      <div class="dh-row"><span>윗변</span><span class="v" id="hud-top">–</span></div>
+    </div>
+
+    <div id="screenshot-flash"></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="size-modal">
+  <div class="modal-box">
+    <div class="modal-title">그림 실제 크기 입력</div>
+    <div class="modal-sub" id="modal-filename"></div>
+    <div class="modal-preview-wrap"><img id="modal-preview"></div>
+    <div class="size-grid">
+      <div>
+        <label class="field-label">가로 (cm)</label>
+        <input type="number" id="modal-w-cm" min="1" step="0.5">
+      </div>
+      <div>
+        <label class="field-label">세로 (cm)</label>
+        <input type="number" id="modal-h-cm" min="1" step="0.5">
+      </div>
+    </div>
+    <div class="modal-lock-row">
+      <input type="checkbox" id="modal-lock-ratio" checked>
+      <span>원본 비율 유지</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="modal-skip">건너뛰기</button>
+      <button class="btn btn-primary" id="modal-add">추가하기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =========================================================
+     STATE
+  ========================================================= */
+  var points = [];
+  var img = null;
+  var polyClosed = false;
+
+  var scene, camera, renderer, threeContainer;
+  var target = new THREE.Vector3(0,1.5,0);
+  var spherical = { radius: 10, theta: Math.PI/4, phi: Math.PI/2.6 };
+  var orbiting = false, lastMouse = {x:0,y:0};
+
+  var walls = [];
+  var floorMesh = null;
+  var ceilingHeight = 3;
+  var roomCentroid = new THREE.Vector3();
+
+  var artworks = [];
+  var figures = [];
+  var selected = null;
+  var dragging = false;
+  var dragKind = null;      // 'artwork' | 'figure'
+  var draggedFigure = null;
+  var dragPlane = new THREE.Plane();
+  var floorPlaneY0 = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+  var raycaster = new THREE.Raycaster();
+  var mouseNDC = new THREE.Vector2();
+
+  /* =========================================================
+     DOM refs
+  ========================================================= */
+  var $ = function(id){ return document.getElementById(id); };
+  var fpUploadBtn = $('fp-upload-btn'), fpFileInput = $('fp-file-input');
+  var fpCanvasWrap = $('fp-canvas-wrap'), fpCanvas = $('fp-canvas'), fpEmpty = $('fp-empty');
+  var traceHint = $('trace-hint'), traceControls = $('trace-controls');
+  var autoDetectRow = $('auto-detect-row'), btnAutoDetect = $('btn-auto-detect'), wallThicknessInput = $('wall-thickness-px');
+  var btnResetPoints = $('btn-reset-points'), btnFinishPoly = $('btn-finish-poly');
+  var scaleInputs = $('scale-inputs'), realWidthInput = $('real-width'), ceilingHeightInput = $('ceiling-height');
+  var btnBuild3d = $('btn-build-3d');
+  var step2 = $('step2'), step3 = $('step3'), stepFigures = $('step-figures'), stepFooter = $('step-footer'), vpHud = $('vp-hud');
+  var floorplanStage = $('floorplan-stage'), threeContainerHolder = null;
+  var artUploadBtn = $('art-upload-btn'), artFileInput = $('art-file-input'), artworkList = $('artwork-list');
+  var snapToggle = $('snap-toggle');
+  var selectedPanel = $('selected-panel'), selName = $('sel-name');
+  var selWcm = $('sel-w-cm'), selHcm = $('sel-h-cm');
+  var rotateSlider = $('rotate-slider'), rotateVal = $('rotate-val');
+  var distBottom = $('dist-bottom'), distCenter = $('dist-center'), distTop = $('dist-top');
+  var btnDeleteArt = $('btn-delete-art');
+  var distHud = $('dist-hud'), hudBottom = $('hud-bottom'), hudCenter = $('hud-center'), hudTop = $('hud-top');
+  var btnScreenshot = $('btn-screenshot'), btnRestart = $('btn-restart');
+  var screenshotFlash = $('screenshot-flash');
+  var btnAddMale = $('btn-add-male'), btnAddFemale = $('btn-add-female'), btnAddChild = $('btn-add-child');
+  var figureList = $('figure-list');
+
+  var sizeModal = $('size-modal'), modalFilename = $('modal-filename'), modalPreview = $('modal-preview');
+  var modalWcm = $('modal-w-cm'), modalHcm = $('modal-h-cm'), modalLockRatio = $('modal-lock-ratio');
+  var modalSkipBtn = $('modal-skip'), modalAddBtn = $('modal-add');
+
+  var ctx = fpCanvas.getContext('2d');
+
+  /* =========================================================
+     STEP 1 — FLOORPLAN TRACE
+  ========================================================= */
+  fpUploadBtn.addEventListener('click', function(){ fpFileInput.click(); });
+
+  fpFileInput.addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var image = new Image();
+      image.onload = function(){
+        img = image;
+        setupCanvas();
+      };
+      image.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function setupCanvas(){
+    var maxW = Math.min(window.innerWidth * 0.6, 760);
+    var maxH = Math.min(window.innerHeight * 0.72, 620);
+    var ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    var w = Math.round(img.naturalWidth * ratio);
+    var h = Math.round(img.naturalHeight * ratio);
+    fpCanvas.width = w; fpCanvas.height = h;
+    fpEmpty.style.display = 'none';
+    fpCanvasWrap.style.display = 'block';
+    points = []; polyClosed = false;
+    autoDetectRow.style.display = 'block';
+    traceHint.style.display = 'block';
+    traceHint.textContent = '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다.';
+    traceControls.style.display = 'flex';
+    scaleInputs.style.display = 'none';
+    btnFinishPoly.disabled = true;
+    redrawFp();
+  }
+
+  function redrawFp(){
+    ctx.clearRect(0,0,fpCanvas.width, fpCanvas.height);
+    ctx.drawImage(img, 0, 0, fpCanvas.width, fpCanvas.height);
+    if(points.length){
+      ctx.strokeStyle = '#c9a24b';
+      ctx.fillStyle = '#c9a24b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for(var i=1;i<points.length;i++){ ctx.lineTo(points[i].x, points[i].y); }
+      if(polyClosed) ctx.closePath();
+      ctx.stroke();
+      points.forEach(function(p, i){
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, i===0?6:4, 0, Math.PI*2);
+        ctx.fillStyle = i===0 ? '#ffffff' : '#c9a24b';
+        ctx.fill();
+        ctx.strokeStyle = '#c9a24b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    }
+  }
+
+  function findNearestPointIdx(x,y,thresh){
+    var best=-1, bestD=thresh;
+    points.forEach(function(p,i){
+      var d = Math.hypot(p.x-x, p.y-y);
+      if(d<bestD){ bestD=d; best=i; }
+    });
+    return best;
+  }
+
+  var activePointIdx = -1, pressStart = null, didDragPoint = false;
+
+  fpCanvas.addEventListener('pointerdown', function(e){
+    var rect = fpCanvas.getBoundingClientRect();
+    var x = e.clientX - rect.left, y = e.clientY - rect.top;
+    pressStart = {x:x,y:y};
+    didDragPoint = false;
+    activePointIdx = findNearestPointIdx(x,y,10);
+  });
+
+  fpCanvas.addEventListener('pointermove', function(e){
+    if(pressStart===null) return;
+    var rect = fpCanvas.getBoundingClientRect();
+    var x = e.clientX - rect.left, y = e.clientY - rect.top;
+    if(activePointIdx !== -1){
+      if(!didDragPoint){
+        var d = Math.hypot(x-pressStart.x, y-pressStart.y);
+        if(d > 4) didDragPoint = true;
+      }
+      if(didDragPoint){
+        points[activePointIdx] = {x:x, y:y};
+        redrawFp();
+      }
+    }
+  });
+
+  fpCanvas.addEventListener('pointerup', function(e){
+    if(pressStart===null){ return; }
+    var rect = fpCanvas.getBoundingClientRect();
+    var x = e.clientX - rect.left, y = e.clientY - rect.top;
+
+    if(!didDragPoint){
+      if(!polyClosed){
+        if(activePointIdx === 0 && points.length >= 3){
+          finishPolygon();
+        } else if(activePointIdx === -1){
+          points.push({x:x, y:y});
+          btnFinishPoly.disabled = points.length < 3;
+          redrawFp();
+        }
+      }
+    }
+    activePointIdx = -1;
+    pressStart = null;
+  });
+
+  btnResetPoints.addEventListener('click', function(){
+    points = []; polyClosed = false;
+    btnFinishPoly.disabled = true;
+    scaleInputs.style.display = 'none';
+    redrawFp();
+  });
+
+  btnFinishPoly.addEventListener('click', finishPolygon);
+
+  function finishPolygon(){
+    if(points.length < 3) return;
+    polyClosed = true;
+    traceHint.textContent = '점을 드래그하면 위치를 세밀하게 조정할 수 있습니다. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
+    redrawFp();
+    scaleInputs.style.display = 'block';
+  }
+
+  /* ---------- AUTO FLOOR DETECTION ----------
+     Pipeline: grayscale -> Otsu threshold -> binary ink mask
+     -> morphological opening (erode then dilate) to keep only
+        THICK strokes (walls) and drop thin strokes (dimension
+        lines, extension lines, hatching, text)
+     -> flood fill the open floor region from a seed point
+     -> trace the region boundary (Moore boundary tracing)
+     -> simplify the traced boundary (Douglas-Peucker)
+  ---------------------------------------------------------- */
+  btnAutoDetect.addEventListener('click', function(){
+    btnAutoDetect.disabled = true;
+    var orig = btnAutoDetect.textContent;
+    btnAutoDetect.textContent = '인식 중…';
+    setTimeout(function(){
+      try{ autoDetectFloor(); }
+      finally{
+        btnAutoDetect.disabled = false;
+        btnAutoDetect.textContent = orig;
+      }
+    }, 30);
+  });
+
+  function otsuThreshold(lum, total){
+    var hist = new Array(256).fill(0);
+    for(var i=0;i<total;i++){
+      var v = lum[i]|0;
+      if(v<0) v=0; if(v>255) v=255;
+      hist[v]++;
+    }
+    var sum = 0;
+    for(var t=0;t<256;t++) sum += t*hist[t];
+    var sumB=0, wB=0, wF=0, varMax=0, threshold=127;
+    for(var t2=0;t2<256;t2++){
+      wB += hist[t2];
+      if(wB===0) continue;
+      wF = total - wB;
+      if(wF===0) break;
+      sumB += t2*hist[t2];
+      var mB = sumB/wB;
+      var mF = (sum-sumB)/wF;
+      var between = wB*wF*(mB-mF)*(mB-mF);
+      if(between > varMax){ varMax = between; threshold = t2; }
+    }
+    return threshold;
+  }
+
+  function diskOffsets(r){
+    var offs=[], r2=r*r;
+    for(var dy=-r; dy<=r; dy++){
+      for(var dx=-r; dx<=r; dx++){
+        if(dx*dx+dy*dy<=r2) offs.push([dx,dy]);
+      }
+    }
+    return offs;
+  }
+
+  function erode(mask,w,h,offs){
+    var out = new Uint8Array(w*h);
+    for(var y=0;y<h;y++){
+      for(var x=0;x<w;x++){
+        var ok=true;
+        for(var k=0;k<offs.length;k++){
+          var nx=x+offs[k][0], ny=y+offs[k][1];
+          if(nx<0||nx>=w||ny<0||ny>=h||mask[ny*w+nx]===0){ ok=false; break; }
+        }
+        out[y*w+x]= ok?1:0;
+      }
+    }
+    return out;
+  }
+
+  function dilate(mask,w,h,offs){
+    var out = new Uint8Array(w*h);
+    for(var y=0;y<h;y++){
+      for(var x=0;x<w;x++){
+        var any=false;
+        for(var k=0;k<offs.length;k++){
+          var nx=x+offs[k][0], ny=y+offs[k][1];
+          if(nx>=0&&nx<w&&ny>=0&&ny<h&&mask[ny*w+nx]===1){ any=true; break; }
+        }
+        out[y*w+x]= any?1:0;
+      }
+    }
+    return out;
+  }
+
+  function autoDetectFloor(){
+    if(!img) return;
+    var aw = Math.min(800, img.naturalWidth);
+    var ah = Math.round(aw * img.naturalHeight / img.naturalWidth);
+    var acan = document.createElement('canvas');
+    acan.width=aw; acan.height=ah;
+    var actx = acan.getContext('2d');
+    actx.drawImage(img,0,0,aw,ah);
+    var idata = actx.getImageData(0,0,aw,ah).data;
+
+    var lum = new Float32Array(aw*ah);
+    for(var i=0;i<aw*ah;i++){
+      var r=idata[i*4], g=idata[i*4+1], b=idata[i*4+2];
+      lum[i] = 0.299*r+0.587*g+0.114*b;
+    }
+    var thr = otsuThreshold(lum, aw*ah);
+    var ink = new Uint8Array(aw*ah);
+    for(var i2=0;i2<aw*ah;i2++){ ink[i2] = lum[i2] < thr ? 1 : 0; }
+
+    var thicknessPx = parseFloat(wallThicknessInput.value) || 4;
+    var rE = Math.max(1, Math.round(thicknessPx/2));
+    var rD = rE + 1;
+    var wallMask = erode(ink, aw, ah, diskOffsets(rE));
+    wallMask = dilate(wallMask, aw, ah, diskOffsets(rD));
+
+    var startX = Math.floor(aw/2), startY = Math.floor(ah/2);
+    if(wallMask[startY*aw+startX] === 1){
+      var found=false;
+      for(var rad=1; rad<Math.min(aw,ah)/2 && !found; rad+=2){
+        for(var a=0;a<360;a+=15){
+          var xx = Math.round(startX + rad*Math.cos(a*Math.PI/180));
+          var yy = Math.round(startY + rad*Math.sin(a*Math.PI/180));
+          if(xx<0||xx>=aw||yy<0||yy>=ah) continue;
+          if(wallMask[yy*aw+xx]===0){ startX=xx; startY=yy; found=true; break; }
+        }
+      }
+      if(!found){
+        alert('바닥 영역을 자동으로 인식하지 못했어요. 도면 중앙이 열린 바닥 공간이 되도록 하거나, 직접 클릭해서 그려주세요.');
+        return;
+      }
+    }
+
+    var mask = new Uint8Array(aw*ah);
+    var qx = new Int32Array(aw*ah), qy = new Int32Array(aw*ah);
+    var qh=0, qt=0;
+    qx[qt]=startX; qy[qt]=startY; qt++;
+    mask[startY*aw+startX]=1;
+    var count=0;
+    while(qh<qt){
+      var cx=qx[qh], cy=qy[qh]; qh++;
+      count++;
+      var nbrs=[[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]];
+      for(var k=0;k<4;k++){
+        var nx=nbrs[k][0], ny=nbrs[k][1];
+        if(nx<0||nx>=aw||ny<0||ny>=ah) continue;
+        var idx=ny*aw+nx;
+        if(mask[idx]||wallMask[idx]===1) continue;
+        mask[idx]=1;
+        qx[qt]=nx; qy[qt]=ny; qt++;
+      }
+    }
+
+    if(count < 40 || count > aw*ah*0.97){
+      alert('바닥 외곽선을 정확히 인식하지 못했어요. "벽 인식 두께 기준" 값을 조절해 다시 시도하거나, 직접 클릭해서 그려주세요.');
+      return;
+    }
+
+    var boundary = traceBoundary(mask, aw, ah);
+    if(!boundary || boundary.length<3){
+      alert('바닥 외곽선을 추출하지 못했어요. 직접 클릭해서 그려주세요.');
+      return;
+    }
+
+    var eps=2.5;
+    var simplified = simplifyClosedPolygon(boundary, eps);
+    while(simplified.length>40 && eps<30){ eps+=1.5; simplified = simplifyClosedPolygon(boundary, eps); }
+    if(simplified.length<3){
+      alert('바닥 외곽선이 너무 단순화되었어요. 직접 클릭해서 그려주세요.');
+      return;
+    }
+
+    var scaleToDisplay = fpCanvas.width / aw;
+    points = simplified.map(function(p){ return {x:p.x*scaleToDisplay, y:p.y*scaleToDisplay}; });
+    polyClosed = true;
+    btnFinishPoly.disabled = false;
+    traceHint.textContent = '자동 인식된 바닥 모양입니다 (꼭짓점 ' + points.length + '개). 점을 드래그해 원하는 대로 다듬을 수 있어요. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
+    scaleInputs.style.display = 'block';
+    redrawFp();
+  }
+
+  function traceBoundary(mask, w, h){
+    var start=null;
+    outer:
+    for(var y=0;y<h;y++){
+      for(var x=0;x<w;x++){
+        if(mask[y*w+x]===1){ start={x:x,y:y}; break outer; }
+      }
+    }
+    if(!start) return null;
+    var dirs = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+    function getPix(x,y){ if(x<0||x>=w||y<0||y>=h) return 0; return mask[y*w+x]; }
+
+    var cx=start.x, cy=start.y;
+    var contour=[{x:cx,y:cy}];
+    var dir=6, guard=0, maxSteps=w*h*4;
+    while(guard++<maxSteps){
+      var moved=false;
+      for(var i=0;i<8;i++){
+        var d=(dir+i)%8;
+        var nx=cx+dirs[d][0], ny=cy+dirs[d][1];
+        if(getPix(nx,ny)===1){
+          cx=nx; cy=ny;
+          dir=(d+6)%8;
+          contour.push({x:cx,y:cy});
+          moved=true;
+          break;
+        }
+      }
+      if(!moved) break;
+      if(cx===start.x && cy===start.y && contour.length>3) break;
+      if(contour.length>8000) break;
+    }
+    return contour;
+  }
+
+  function simplifyClosedPolygon(pts, epsilon){
+    if(pts.length<3) return pts.slice();
+    var res = dpSimplify(pts.slice(), epsilon);
+    if(res.length>1){
+      var f=res[0], l=res[res.length-1];
+      if(Math.hypot(f.x-l.x,f.y-l.y)<2) res.pop();
+    }
+    return res;
+  }
+
+  function dpSimplify(list, epsilon){
+    if(list.length<3) return list;
+    function perpDist(p,a,b){
+      var dx=b.x-a.x, dy=b.y-a.y;
+      var len=Math.hypot(dx,dy);
+      if(len===0) return Math.hypot(p.x-a.x,p.y-a.y);
+      var t=((p.x-a.x)*dx+(p.y-a.y)*dy)/(len*len);
+      var px=a.x+t*dx, py=a.y+t*dy;
+      return Math.hypot(p.x-px,p.y-py);
+    }
+    var dmax=0, idx=0;
+    for(var i=1;i<list.length-1;i++){
+      var d=perpDist(list[i], list[0], list[list.length-1]);
+      if(d>dmax){ dmax=d; idx=i; }
+    }
+    if(dmax>epsilon){
+      var left=dpSimplify(list.slice(0,idx+1), epsilon);
+      var right=dpSimplify(list.slice(idx), epsilon);
+      return left.slice(0,-1).concat(right);
+    }
+    return [list[0], list[list.length-1]];
+  }
+
+  btnBuild3d.addEventListener('click', function(){
+    var minX = Math.min.apply(null, points.map(function(p){return p.x;}));
+    var maxX = Math.max.apply(null, points.map(function(p){return p.x;}));
+    var minY = Math.min.apply(null, points.map(function(p){return p.y;}));
+    var bboxWpx = Math.max(maxX - minX, 1);
+    var realW = parseFloat(realWidthInput.value) || 10;
+    ceilingHeight = parseFloat(ceilingHeightInput.value) || 3;
+    var scale = realW / bboxWpx;
+
+    var worldPts = points.map(function(p){
+      return new THREE.Vector2( (p.x - minX) * scale, (p.y - minY) * scale );
+    });
+
+    floorplanStage.classList.add('hidden');
+    threeContainerHolder.classList.remove('hidden');
+    step2.classList.remove('hidden');
+    step3.classList.remove('hidden');
+    stepFigures.classList.remove('hidden');
+    stepFooter.classList.remove('hidden');
+    vpHud.classList.remove('hidden');
+
+    buildRoom(worldPts);
+    onResize();
+    requestAnimationFrame(function(){ onResize(); animate(); });
+  });
+
+  /* =========================================================
+     3D SCENE
+  ========================================================= */
+  threeContainerHolder = $('three-container');
+
+  function buildRoom(pts2d){
+    walls = [];
+
+    var cx=0, cz=0;
+    pts2d.forEach(function(p){ cx+=p.x; cz+=p.y; });
+    cx/=pts2d.length; cz/=pts2d.length;
+    roomCentroid.set(cx, ceilingHeight/2, cz);
+
+    if(scene){
+      var toRemove=[];
+      scene.traverse(function(o){ if(o.userData && (o.userData.isWall||o.userData.isFloor)) toRemove.push(o); });
+      toRemove.forEach(function(o){ scene.remove(o); });
+      artworks.forEach(function(a){ scene.remove(a.group); });
+      figures.forEach(function(f){ scene.remove(f.sprite); });
+      artworks=[]; figures=[];
+      selected=null;
+      updateArtworkListUI();
+      updateFigureListUI();
+      selectedPanel.classList.remove('show');
+      distHud.classList.remove('show');
+    } else {
+      initScene();
+    }
+
+    var shape = new THREE.Shape();
+    pts2d.forEach(function(p,i){ if(i===0) shape.moveTo(p.x,p.y); else shape.lineTo(p.x,p.y); });
+    shape.closePath();
+    var floorGeo = new THREE.ShapeGeometry(shape);
+    floorGeo.rotateX(Math.PI/2);
+    var floorMat = new THREE.MeshStandardMaterial({ color:0xcfcac0, side:THREE.DoubleSide, roughness:0.9 });
+    floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.userData.isFloor = true;
+    scene.add(floorMesh);
+
+    var wallMat = new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 });
+    var n = pts2d.length;
+    for(var i=0;i<n;i++){
+      var p1=pts2d[i], p2=pts2d[(i+1)%n];
+      var dx=p2.x-p1.x, dz=p2.y-p1.y;
+      var len=Math.hypot(dx,dz);
+      if(len<0.01) continue;
+      var dirx=dx/len, dirz=dz/len;
+      var nx=-dirz, nz=dirx;
+      var midx=(p1.x+p2.x)/2, midz=(p1.y+p2.y)/2;
+      var toCx=cx-midx, toCz=cz-midz;
+      var dot=nx*toCx+nz*toCz;
+      if(dot>0){ nx=-nx; nz=-nz; }
+      var inward = new THREE.Vector3(-nx,0,-nz).normalize();
+
+      var wallGeo = new THREE.PlaneGeometry(len, ceilingHeight);
+      var wallMesh = new THREE.Mesh(wallGeo, wallMat);
+      wallMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(nx,0,nz));
+      wallMesh.position.set(midx, ceilingHeight/2, midz);
+      wallMesh.userData.isWall = true;
+      scene.add(wallMesh);
+
+      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz) });
+    }
+
+    var xs=pts2d.map(function(p){return p.x;}), ys=pts2d.map(function(p){return p.y;});
+    var maxDim = Math.max(Math.max.apply(null,xs)-Math.min.apply(null,xs), Math.max.apply(null,ys)-Math.min.apply(null,ys));
+    spherical.radius = Math.max(maxDim*1.1, 4);
+    target.set(cx, ceilingHeight*0.45, cz);
+    updateCamera();
+  }
+
+  function initScene(){
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xdedad2);
+
+    camera = new THREE.PerspectiveCamera(55, Math.max(threeContainerHolder.clientWidth,1)/Math.max(threeContainerHolder.clientHeight,1), 0.05, 500);
+
+    renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer.setSize(Math.max(threeContainerHolder.clientWidth,1), Math.max(threeContainerHolder.clientHeight,1));
+    threeContainerHolder.appendChild(renderer.domElement);
+
+    var hemi = new THREE.HemisphereLight(0xffffff, 0x555044, 0.9);
+    scene.add(hemi);
+    var dir1 = new THREE.DirectionalLight(0xffffff, 0.65); dir1.position.set(6,10,4); scene.add(dir1);
+    var dir2 = new THREE.DirectionalLight(0xffffff, 0.35); dir2.position.set(-6,6,-4); scene.add(dir2);
+    var amb = new THREE.AmbientLight(0xffffff, 0.25); scene.add(amb);
+
+    attachInteraction();
+    window.addEventListener('resize', onResize);
+  }
+
+  function onResize(){
+    if(!renderer) return;
+    var w=Math.max(threeContainerHolder.clientWidth,1), h=Math.max(threeContainerHolder.clientHeight,1);
+    camera.aspect=w/h; camera.updateProjectionMatrix();
+    renderer.setSize(w,h);
+  }
+
+  function updateCamera(){
+    var r=spherical.radius, th=spherical.theta, ph=spherical.phi;
+    camera.position.x = target.x + r*Math.sin(ph)*Math.sin(th);
+    camera.position.z = target.z + r*Math.sin(ph)*Math.cos(th);
+    camera.position.y = target.y + r*Math.cos(ph);
+    camera.lookAt(target);
+  }
+
+  /* =========================================================
+     INTERACTION
+  ========================================================= */
+  function attachInteraction(){
+    var dom = renderer.domElement;
+
+    dom.addEventListener('pointerdown', function(e){
+      var rect = dom.getBoundingClientRect();
+      mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
+      mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
+      raycaster.setFromCamera(mouseNDC, camera);
+
+      var artMeshes = artworks.map(function(a){return a.plane;});
+      var figMeshes = figures.map(function(f){return f.sprite;});
+      var hits = raycaster.intersectObjects(artMeshes.concat(figMeshes));
+      if(hits.length){
+        var obj = hits[0].object;
+        var art = artworks.filter(function(a){return a.plane===obj;})[0];
+        if(art){ selectArtwork(art); startDragArtwork(art); return; }
+        var fig = figures.filter(function(f){return f.sprite===obj;})[0];
+        if(fig){ startDragFigure(fig); return; }
+      }
+
+      orbiting = true;
+      lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+    });
+
+    window.addEventListener('pointermove', function(e){
+      if(dragging){ doDrag(e); return; }
+      if(!orbiting) return;
+      var dx = e.clientX-lastMouse.x, dy = e.clientY-lastMouse.y;
+      lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+      spherical.theta -= dx*0.006;
+      spherical.phi -= dy*0.006;
+      spherical.phi = Math.max(0.15, Math.min(Math.PI-0.15, spherical.phi));
+      updateCamera();
+    });
+
+    window.addEventListener('pointerup', function(){
+      orbiting = false;
+      dragging = false;
+      dragKind = null;
+      draggedFigure = null;
+    });
+
+    dom.addEventListener('wheel', function(e){
+      e.preventDefault();
+      spherical.radius *= (1+e.deltaY*0.001);
+      spherical.radius = Math.max(1, Math.min(60, spherical.radius));
+      updateCamera();
+    }, { passive:false });
+  }
+
+  function startDragArtwork(art){
+    dragging = true; orbiting = false; dragKind='artwork';
+    if(!snapToggle.checked){
+      var camDir = new THREE.Vector3();
+      camera.getWorldDirection(camDir);
+      dragPlane.setFromNormalAndCoplanarPoint(camDir, art.group.position);
+    }
+  }
+
+  function startDragFigure(fig){
+    dragging = true; orbiting = false; dragKind='figure'; draggedFigure = fig;
+  }
+
+  function doDrag(e){
+    var rect = renderer.domElement.getBoundingClientRect();
+    mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
+    mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(mouseNDC, camera);
+
+    if(dragKind === 'figure'){
+      if(!draggedFigure) return;
+      var pt = new THREE.Vector3();
+      raycaster.ray.intersectPlane(floorPlaneY0, pt);
+      if(pt){
+        draggedFigure.sprite.position.x = pt.x;
+        draggedFigure.sprite.position.z = pt.z;
+      }
+      return;
+    }
+
+    if(!selected) return;
+    if(snapToggle.checked){
+      var wallMeshes = walls.map(function(w){return w.mesh;});
+      var hits = raycaster.intersectObjects(wallMeshes);
+      if(hits.length){
+        var hit = hits[0];
+        var w = walls.filter(function(ww){return ww.mesh===hit.object;})[0];
+        placeOnWall(selected, w, hit.point);
+      }
+    } else {
+      var pt2 = new THREE.Vector3();
+      raycaster.ray.intersectPlane(dragPlane, pt2);
+      if(pt2){
+        pt2.y = Math.max(selected.h/2*0.2, Math.min(ceilingHeight-0.02, pt2.y));
+        selected.group.position.copy(pt2);
+        selected.snapped = false;
+        applyRoll(selected);
+      }
+    }
+    updateDistanceReadouts(selected);
+  }
+
+  function placeOnWall(art, wall, point){
+    var y = Math.max(art.h/2*0.2, Math.min(ceilingHeight-0.02, point.y));
+    var pos = point.clone(); pos.y = y;
+    pos.addScaledVector(wall.inward, 0.015);
+    art.group.position.copy(pos);
+    art.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), wall.inward);
+    art.snapped = true; art.wall = wall;
+    applyRoll(art);
+  }
+
+  function applyRoll(art){
+    var rollQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), THREE.MathUtils.degToRad(art.roll));
+    if(art.snapped && art.baseQuat){
+      art.group.quaternion.copy(art.baseQuat).multiply(rollQ);
+    } else {
+      var camDir = new THREE.Vector3();
+      camera.getWorldDirection(camDir);
+      var baseQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), camDir.clone().negate());
+      art.group.quaternion.copy(baseQ).multiply(rollQ);
+    }
+  }
+
+  /* =========================================================
+     ARTWORKS
+  ========================================================= */
+  var uploadQueue = [];
+  var modalBusy = false;
+  var currentUploadImage=null, currentUploadDataUrl=null, currentUploadName=null, currentUploadAspect=1;
+
+  artUploadBtn.addEventListener('click', function(){ artFileInput.click(); });
+  artFileInput.addEventListener('change', function(e){
+    var files = Array.prototype.slice.call(e.target.files);
+    uploadQueue = uploadQueue.concat(files);
+    artFileInput.value = '';
+    processNextUpload();
+  });
+
+  function processNextUpload(){
+    if(modalBusy) return;
+    var file = uploadQueue.shift();
+    if(!file) return;
+    modalBusy = true;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var image = new Image();
+      image.onload = function(){
+        currentUploadImage = image;
+        currentUploadDataUrl = ev.target.result;
+        currentUploadName = file.name;
+        currentUploadAspect = image.naturalWidth / image.naturalHeight;
+        openSizeModal();
+      };
+      image.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function openSizeModal(){
+    modalFilename.textContent = currentUploadName;
+    modalPreview.src = currentUploadDataUrl;
+    var defaultW = 60;
+    modalWcm.value = defaultW;
+    modalHcm.value = (defaultW/currentUploadAspect).toFixed(1);
+    modalLockRatio.checked = true;
+    sizeModal.classList.remove('hidden');
+  }
+
+  modalWcm.addEventListener('input', function(){
+    if(modalLockRatio.checked){
+      var w = parseFloat(modalWcm.value)||0;
+      modalHcm.value = (w/currentUploadAspect).toFixed(1);
+    }
+  });
+  modalHcm.addEventListener('input', function(){
+    if(modalLockRatio.checked){
+      var h = parseFloat(modalHcm.value)||0;
+      modalWcm.value = (h*currentUploadAspect).toFixed(1);
+    }
+  });
+
+  modalAddBtn.addEventListener('click', function(){
+    var wCm = parseFloat(modalWcm.value)||60;
+    var hCm = parseFloat(modalHcm.value)||(wCm/currentUploadAspect);
+    createArtwork(currentUploadImage, currentUploadDataUrl, currentUploadName, wCm/100, hCm/100);
+    closeModalAndNext();
+  });
+  modalSkipBtn.addEventListener('click', function(){
+    var wM=0.6, hM=0.6/currentUploadAspect;
+    createArtwork(currentUploadImage, currentUploadDataUrl, currentUploadName, wM, hM);
+    closeModalAndNext();
+  });
+  function closeModalAndNext(){
+    sizeModal.classList.add('hidden');
+    modalBusy = false;
+    processNextUpload();
+  }
+
+  var artCount = 0;
+
+  function createArtwork(image, dataUrl, name, wMeters, hMeters){
+    var w=wMeters, h=hMeters;
+    var tex = new THREE.Texture(image);
+    tex.needsUpdate = true;
+    if(THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+
+    var group = new THREE.Group();
+    var frameGeo = new THREE.PlaneGeometry(w+0.06, h+0.06);
+    var frameMat = new THREE.MeshStandardMaterial({ color:0x2a2a2a, roughness:0.6 });
+    var frame = new THREE.Mesh(frameGeo, frameMat);
+    frame.position.z = -0.008;
+    group.add(frame);
+
+    var planeGeo = new THREE.PlaneGeometry(w,h);
+    var planeMat = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide });
+    var plane = new THREE.Mesh(planeGeo, planeMat);
+    group.add(plane);
+
+    scene.add(group);
+
+    var art = { group:group, plane:plane, frame:frame, w:w, h:h, name:name, roll:0, snapped:false, id:'art'+(artCount++) };
+    artworks.push(art);
+
+    if(walls.length){
+      var w0 = walls[0];
+      var offsetIdx = artworks.length-1;
+      var t = 0.3 + (offsetIdx*0.8) % Math.max(w0.length-0.6, 0.4);
+      var basePt = w0.p1.clone().addScaledVector(w0.dir, Math.min(t, w0.length-0.3));
+      basePt.y = ceilingHeight/2;
+      placeOnWall(art, w0, basePt);
+    } else {
+      group.position.copy(target);
+    }
+
+    updateArtworkListUI();
+    selectArtwork(art);
+  }
+
+  function resizeArtwork(art, wM, hM){
+    wM=Math.max(0.02,wM); hM=Math.max(0.02,hM);
+    art.w=wM; art.h=hM;
+    art.plane.geometry.dispose();
+    art.plane.geometry = new THREE.PlaneGeometry(wM,hM);
+    art.frame.geometry.dispose();
+    art.frame.geometry = new THREE.PlaneGeometry(wM+0.06,hM+0.06);
+  }
+
+  function updateArtworkListUI(){
+    artworkList.innerHTML = '';
+    artworks.forEach(function(a){
+      var item = document.createElement('div');
+      item.className = 'art-item' + (selected===a ? ' selected':'');
+      var thumb = document.createElement('img');
+      thumb.src = a.plane.material.map.image.src;
+      var nm = document.createElement('div');
+      nm.className = 'art-name'; nm.textContent = a.name;
+      var del = document.createElement('div');
+      del.className = 'art-del'; del.textContent = '✕';
+      del.addEventListener('click', function(ev){ ev.stopPropagation(); deleteArtwork(a); });
+      item.appendChild(thumb); item.appendChild(nm); item.appendChild(del);
+      item.addEventListener('click', function(){ selectArtwork(a); });
+      artworkList.appendChild(item);
+    });
+  }
+
+  function selectArtwork(a){
+    selected = a;
+    selName.textContent = a.name;
+    selectedPanel.classList.add('show');
+    distHud.classList.add('show');
+    rotateSlider.value = a.roll; rotateVal.textContent = a.roll;
+    selWcm.value = (a.w*100).toFixed(1);
+    selHcm.value = (a.h*100).toFixed(1);
+    updateArtworkListUI();
+    updateDistanceReadouts(a);
+  }
+
+  function deleteArtwork(a){
+    scene.remove(a.group);
+    artworks = artworks.filter(function(x){return x!==a;});
+    if(selected===a){ selected=null; selectedPanel.classList.remove('show'); distHud.classList.remove('show'); }
+    updateArtworkListUI();
+  }
+
+  btnDeleteArt.addEventListener('click', function(){ if(selected) deleteArtwork(selected); });
+
+  rotateSlider.addEventListener('input', function(){
+    if(!selected) return;
+    selected.roll = parseFloat(rotateSlider.value);
+    rotateVal.textContent = selected.roll;
+    applyRoll(selected);
+  });
+
+  selWcm.addEventListener('input', function(){
+    if(!selected) return;
+    resizeArtwork(selected, (parseFloat(selWcm.value)||60)/100, selected.h);
+    updateDistanceReadouts(selected);
+  });
+  selHcm.addEventListener('input', function(){
+    if(!selected) return;
+    resizeArtwork(selected, selected.w, (parseFloat(selHcm.value)||60)/100);
+    updateDistanceReadouts(selected);
+  });
+
+  function updateDistanceReadouts(a){
+    if(!a) return;
+    var y=a.group.position.y;
+    var bottom=Math.max(y-a.h/2,0), center=y, top=y+a.h/2;
+    var f=function(v){ return (v*100).toFixed(1)+' cm'; };
+    distBottom.textContent=f(bottom); distCenter.textContent=f(center); distTop.textContent=f(top);
+    hudBottom.textContent=f(bottom); hudCenter.textContent=f(center); hudTop.textContent=f(top);
+  }
+
+  /* =========================================================
+     HUMAN REFERENCE FIGURES
+  ========================================================= */
+  var FIGURE_TYPES = {
+    male:   { label:'성인 남성', height:1.72, color:'#3c4a5e', headR:0.085, shoulderR:0.34, hipR:0.30, gapR:0.10 },
+    female: { label:'성인 여성', height:1.60, color:'#8a5a6b', headR:0.082, shoulderR:0.27, hipR:0.30, gapR:0.07 },
+    child:  { label:'어린이',   height:1.15, color:'#4f8a6b', headR:0.13,  shoulderR:0.22, hipR:0.22, gapR:0.09 }
+  };
+  var figureTexCache = {};
+  var figCount = 0;
+
+  function getFigureCanvas(type){
+    if(figureTexCache[type]) return figureTexCache[type];
+    var def = FIGURE_TYPES[type];
+    var W=220, H=520;
+    var cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+    var c = cv.getContext('2d');
+    c.fillStyle = def.color;
+    var cx = W/2;
+    var headR = H*def.headR;
+    var headCY = headR+4;
+    c.beginPath(); c.arc(cx,headCY,headR,0,Math.PI*2); c.fill();
+
+    var neckY = headCY+headR*0.85;
+    var shoulderHalf = (W*def.shoulderR)/2;
+    var waistY = H*0.52;
+    var waistHalf = shoulderHalf*0.72;
+    var hipY = H*0.60;
+    var hipHalf = (W*def.hipR)/2;
+    var legTopY = hipY;
+    var legBottomY = H*0.96;
+    var legHalf = hipHalf*0.42;
+    var gap = (W*def.gapR)/2;
+
+    c.beginPath();
+    c.moveTo(cx-shoulderHalf, neckY);
+    c.lineTo(cx+shoulderHalf, neckY);
+    c.lineTo(cx+waistHalf, waistY);
+    c.lineTo(cx+hipHalf, hipY);
+    c.lineTo(cx-hipHalf, hipY);
+    c.lineTo(cx-waistHalf, waistY);
+    c.closePath(); c.fill();
+
+    function leg(xC){
+      c.beginPath();
+      c.moveTo(xC-legHalf, legTopY);
+      c.lineTo(xC+legHalf, legTopY);
+      c.lineTo(xC+legHalf*0.8, legBottomY);
+      c.lineTo(xC-legHalf*0.8, legBottomY);
+      c.closePath(); c.fill();
+    }
+    leg(cx-gap-legHalf*0.6);
+    leg(cx+gap+legHalf*0.6);
+
+    var armHalf = legHalf*0.55;
+    function arm(xC, topY){
+      c.beginPath();
+      c.moveTo(xC-armHalf, topY);
+      c.lineTo(xC+armHalf, topY);
+      c.lineTo(xC+armHalf*0.7, topY+(waistY-topY)*1.6);
+      c.lineTo(xC-armHalf*0.7, topY+(waistY-topY)*1.6);
+      c.closePath(); c.fill();
+    }
+    arm(cx-shoulderHalf-armHalf*0.7, neckY+4);
+    arm(cx+shoulderHalf+armHalf*0.7, neckY+4);
+
+    figureTexCache[type] = cv;
+    return cv;
+  }
+
+  function addFigure(type){
+    if(!scene) return;
+    var def = FIGURE_TYPES[type];
+    var cv = getFigureCanvas(type);
+    var tex = new THREE.CanvasTexture(cv);
+    var aspect = cv.width/cv.height;
+    var mat = new THREE.SpriteMaterial({ map:tex, transparent:true });
+    var sprite = new THREE.Sprite(mat);
+    var H = def.height;
+    sprite.scale.set(H*aspect, H, 1);
+
+    var idx = figures.length;
+    var pos = roomCentroid.clone();
+    pos.x += (idx%3 - 1)*0.7;
+    pos.z += Math.floor(idx/3)*0.7;
+    pos.y = H/2;
+    sprite.position.copy(pos);
+    scene.add(sprite);
+
+    var fig = { sprite:sprite, type:type, height:H, id:'fig'+(figCount++) };
+    figures.push(fig);
+    updateFigureListUI();
+  }
+
+  function deleteFigure(f){
+    scene.remove(f.sprite);
+    figures = figures.filter(function(x){return x!==f;});
+    updateFigureListUI();
+  }
+
+  function updateFigureListUI(){
+    figureList.innerHTML = '';
+    figures.forEach(function(f){
+      var def = FIGURE_TYPES[f.type];
+      var item = document.createElement('div');
+      item.className = 'art-item';
+      var sw = document.createElement('div');
+      sw.className = 'fig-swatch';
+      sw.style.background = def.color;
+      var nm = document.createElement('div');
+      nm.className = 'art-name';
+      nm.textContent = def.label + ' (' + Math.round(f.height*100) + 'cm)';
+      var del = document.createElement('div');
+      del.className = 'art-del'; del.textContent = '✕';
+      del.addEventListener('click', function(ev){ ev.stopPropagation(); deleteFigure(f); });
+      item.appendChild(sw); item.appendChild(nm); item.appendChild(del);
+      figureList.appendChild(item);
+    });
+  }
+
+  btnAddMale.addEventListener('click', function(){ addFigure('male'); });
+  btnAddFemale.addEventListener('click', function(){ addFigure('female'); });
+  btnAddChild.addEventListener('click', function(){ addFigure('child'); });
+
+  /* =========================================================
+     RENDER LOOP
+  ========================================================= */
+  var loopStarted = false;
+  function animate(){
+    if(loopStarted) return;
+    loopStarted = true;
+    (function loop(){
+      requestAnimationFrame(loop);
+      if(selected) updateDistanceReadouts(selected);
+      if(renderer) renderer.render(scene, camera);
+    })();
+  }
+
+  /* =========================================================
+     SCREENSHOT / RESTART
+  ========================================================= */
+  btnScreenshot.addEventListener('click', function(){
+    if(!renderer) return;
+    renderer.render(scene, camera);
+    var url = renderer.domElement.toDataURL('image/png');
+    var a = document.createElement('a');
+    a.href = url; a.download = 'exhibition-view-'+Date.now()+'.png';
+    a.click();
+    screenshotFlash.style.opacity = '0.85';
+    setTimeout(function(){ screenshotFlash.style.opacity = '0'; }, 120);
+  });
+
+  btnRestart.addEventListener('click', function(){
+    if(!confirm('현재 공간과 배치된 그림·인체 모형이 모두 초기화됩니다. 계속할까요?')) return;
+    artworks.forEach(function(a){ scene.remove(a.group); });
+    figures.forEach(function(f){ scene.remove(f.sprite); });
+    artworks=[]; figures=[]; selected=null;
+    points=[]; polyClosed=false; img=null;
+    fpEmpty.style.display='block';
+    fpCanvasWrap.style.display='none';
+    autoDetectRow.style.display='none';
+    traceHint.style.display='none';
+    traceControls.style.display='none';
+    scaleInputs.style.display='none';
+    floorplanStage.classList.remove('hidden');
+    threeContainerHolder.classList.add('hidden');
+    step2.classList.add('hidden');
+    step3.classList.add('hidden');
+    stepFigures.classList.add('hidden');
+    stepFooter.classList.add('hidden');
+    vpHud.classList.add('hidden');
+    selectedPanel.classList.remove('show');
+    distHud.classList.remove('show');
+    updateArtworkListUI();
+    updateFigureListUI();
+  });
+
+})();
+</script>
+</body>
+</html>
