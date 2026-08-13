@@ -498,7 +498,7 @@
     points = []; polyClosed = false;
     autoDetectRow.style.display = 'block';
     traceHint.style.display = 'block';
-    traceHint.textContent = '도    traceHint.textContent = '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다. 점을 더블클릭하면 삭제됩니다.';
+    traceHint.textContent = '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다. 점을 더블클릭하면 삭제됩니다.';
     traceControls.style.display = 'flex';
     scaleInputs.style.display = 'none';
     btnFinishPoly.disabled = true;
@@ -652,8 +652,6 @@
     pressStart = null;
     redrawFp();
   });
-
-  btnToggleIslandDraw.addEventListener('click', function(){
 
   btnToggleIslandDraw.addEventListener('click', function(){
     islandWallMode = !islandWallMode;
