@@ -1747,7 +1747,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
     // 기존의 평면(PlaneGeometry)을 두께가 있는 액자/패널(BoxGeometry)로 변경합니다.
     // BoxGeometry의 앞/뒤 면에는 그림 이미지를, 옆면에는 어두운 재질을 사용합니다.
-    var artSideMat = new THREE.MeshStandardMaterial({ color:0xDDDDDD, roughness:0.75 });
+    var artSideMat = new THREE.MeshStandardMaterial({ color:0xCCCCCC, roughness:0.75 });
     var artFrontMat = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide });
     var boxGeo = new THREE.BoxGeometry(w,h,d);
     var boxMat = [
