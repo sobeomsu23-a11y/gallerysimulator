@@ -217,8 +217,8 @@
         <input type="number" id="ceiling-height" value="3" step="0.1" min="1.5">
         <div class="hint">도면에 표기된 실측 수치를 확인해 입력하거나, 원하는 값으로 직접 설정하세요.</div>
 
-        <label class="field-label">독립 벽 (선택 사항)</label>
-        <button class="btn" id="btn-toggle-island-draw">독립 벽 그리기</button>
+        <label class="field-label">가벽 (선택 사항)</label>
+        <button class="btn" id="btn-toggle-island-draw">가벽 그리기</button>
         <div class="hint">도면 안쪽에서 두 점을 순서대로 클릭하면 독립된 벽 선이 하나 그려져요. 여러 개 그릴 수 있고, 3D 공간을 생성하면 실제 벽으로 만들어집니다.</div>
         <div id="island-segment-list"></div>
 
@@ -269,14 +269,14 @@
     </div>
 
     <div class="panel-section hidden" id="step-island-walls">
-      <div class="sec-label"><span class="num">5</span>독립 벽 추가</div>
-      <button class="btn" id="btn-add-island-wall">독립 벽 추가</button>
+      <div class="sec-label"><span class="num">5</span>가벽 추가</div>
+      <button class="btn" id="btn-add-island-wall">가벽 추가</button>
       <div class="hint">공간 한가운데 세울 수 있는 독립된 벽이에요. 벽 몸체를 클릭한 뒤 드래그하면 바닥 위에서 옮길 수 있고, 양면 모두에 그림을 걸 수 있어요.</div>
       <div id="island-wall-list"></div>
     </div>
 
     <div class="panel-section hidden" id="island-wall-panel">
-      <div class="sec-label">선택한 독립 벽</div>
+      <div class="sec-label">선택한 가벽</div>
       <div class="size-grid">
         <div>
           <label class="field-label">길이 (m)</label>
@@ -772,7 +772,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       btnToggleOpeningDraw.textContent = '뚫린 벽 표시하기';
     }
     btnToggleIslandDraw.classList.toggle('active', islandWallMode);
-    btnToggleIslandDraw.textContent = islandWallMode ? '독립 벽 그리기 중… (다시 누르면 종료)' : '독립 벽 그리기';
+    btnToggleIslandDraw.textContent = islandWallMode ? '가벽 그리기 중… (다시 누르면 종료)' : '가벽 그리기';
     redrawFp();
   });
 
@@ -782,7 +782,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       islandWallMode = false;
       islandDrawStart = null;
       btnToggleIslandDraw.classList.remove('active');
-      btnToggleIslandDraw.textContent = '독립 벽 그리기';
+      btnToggleIslandDraw.textContent = '가벽 그리기';
     }
     btnToggleOpeningDraw.classList.toggle('active', openingMode);
     btnToggleOpeningDraw.textContent = openingMode ? '뚫린 벽 표시 중… (다시 누르면 종료)' : '뚫린 벽 표시하기';
@@ -796,7 +796,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       item.className = 'art-item';
       var nm = document.createElement('div');
       nm.className = 'art-name';
-      nm.textContent = '독립 벽 선 ' + (idx+1);
+      nm.textContent = '가벽 선 ' + (idx+1);
       var del = document.createElement('div');
       del.className = 'art-del'; del.textContent = '✕';
       del.addEventListener('click', function(){
@@ -2353,7 +2353,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       sw.style.background = '#f6f4ef';
       var nm = document.createElement('div');
       nm.className = 'art-name';
-      nm.textContent = '독립 벽 (' + Math.round(iw.length*100) + 'cm)';
+      nm.textContent = '가벽 (' + Math.round(iw.length*100) + 'cm)';
       var del = document.createElement('div');
       del.className = 'art-del'; del.textContent = '✕';
       del.addEventListener('click', function(ev){ ev.stopPropagation(); deleteIslandWall(iw); });
