@@ -1232,6 +1232,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
     renderer.setSize(Math.max(threeContainerHolder.clientWidth,1), Math.max(threeContainerHolder.clientHeight,1));
+    if(THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
     threeContainerHolder.appendChild(renderer.domElement);
 
     var hemi = new THREE.HemisphereLight(0xffffff, 0x555044, 0.9);
