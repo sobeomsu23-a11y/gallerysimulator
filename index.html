@@ -1123,12 +1123,6 @@
       }
 
       var iwMeshes = islandWalls.map(function(iw){return iw.boxMesh;});
-      var iwHits = raycaster.intersectObjects(iwMeshes);
-      if(iwHits.length){
-        var iwObj = iwHits[0].object;
-        var hitIw = islandWalls.filter(function(x){return x.boxMesh===iwObj;})[0];
-        if(hitIw){ selectIslandWall(hitIw); startDragIslandWall(hitIw); return; }
-      }
 
       orbiting = true;
       lastMouse.x = e.clientX; lastMouse.y = e.clientY;
@@ -1170,12 +1164,13 @@
     });
 
     window.addEventListener('pointerup', function(){
-      orbiting = false;
-      dragging = false;
-      dragKind = null;
-      draggedFigure = null;
-      draggedIslandWall = null;
-    });
+  orbiting = false;
+  panning = false;
+  dragging = false;
+  dragKind = null;
+  draggedFigure = null;
+  draggedIslandWall = null;
+});
 
     dom.addEventListener('wheel', function(e){
       e.preventDefault();
@@ -1211,95 +1206,132 @@
   }
 }
 
-  function startDragFigure(fig){
-    if(!selected) return;
+  function startDragIslandWall(iw){
+  dragging = true;
+  orbiting = false;
+  dragKind = 'islandwall';
+  draggedIslandWall = iw;
 
-if(snapToggle.checked){
+  dragPlane.setFromNormalAndCoplanarPoint(
+    floorPlaneY0.normal,
+    new THREE.Vector3(
+      iw.group.position.x,
+      0,
+      iw.group.position.z
+    )
+  );
+}
 
-  // --------------------------------------------------
-  // 1. 먼저 현재 마우스 위치에서 실제 벽을 찾는다.
-  // --------------------------------------------------
-  var wallMeshes = walls.map(function(w){
-    return w.mesh;
-  });
+function doDrag(e){
+  var rect = renderer.domElement.getBoundingClientRect();
 
-  var hits = raycaster.intersectObjects(wallMeshes);
+  mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-  if(hits.length){
+  raycaster.setFromCamera(mouseNDC, camera);
 
-    var hit = hits[0];
+  if(dragKind === 'artwork' && selected){
+    var art = selected;
 
-    var w = walls.filter(function(ww){
-      return ww.mesh === hit.object;
-    })[0];
+    if(snapToggle.checked){
+      var wallMeshes = walls.map(function(w){
+        return w.mesh;
+      });
 
-    if(w){
-      placeOnWall(selected, w, hit.point);
-    }
+      var hits = raycaster.intersectObjects(wallMeshes);
 
-  } else {
+      if(hits.length){
+        var hit = hits[0];
 
-    // --------------------------------------------------
-    // 2. 벽을 순간적으로 찾지 못하더라도
-    //    현재 벽의 평면을 따라 계속 이동할 수 있도록 한다.
-    // --------------------------------------------------
-    var ptWall = new THREE.Vector3();
+        var wall = walls.filter(function(w){
+          return w.mesh === hit.object;
+        })[0];
 
-    if(raycaster.ray.intersectPlane(dragPlane, ptWall)){
+        if(wall){
+          placeOnWall(art, wall, hit.point);
+        }
+      } else {
+        var ptWall = new THREE.Vector3();
 
-      ptWall.y = Math.max(
-        selected.h / 2 * 0.2,
-        Math.min(
-          ceilingHeight - 0.02,
-          ptWall.y
-        )
-      );
+        if(raycaster.ray.intersectPlane(dragPlane, ptWall)){
+          ptWall.y = Math.max(
+            art.h / 2 * 0.05,
+            Math.min(ceilingHeight - 0.02, ptWall.y)
+          );
 
-      selected.group.position.copy(ptWall);
+          art.group.position.copy(ptWall);
+          art.snapped = true;
 
-      // 현재 벽 방향은 유지
-      selected.snapped = true;
+          if(art.wall){
+            applyRoll(art);
+          }
+        }
+      }
+    } else {
+      var ptFree = new THREE.Vector3();
 
-      if(selected.wall){
-        applyRoll(selected);
+      if(raycaster.ray.intersectPlane(dragPlane, ptFree)){
+        ptFree.y = Math.max(
+          art.h / 2 * 0.05,
+          Math.min(ceilingHeight - 0.02, ptFree.y)
+        );
+
+        art.group.position.copy(ptFree);
+        art.snapped = false;
+        art.wall = null;
+
+        applyRoll(art);
       }
     }
+
+    if(art.heightLocked){
+      applyHeightLock(art);
+    }
+
+    updateDistanceReadouts(art);
+    return;
   }
 
-} else {
+  if(dragKind === 'figure' && draggedFigure){
+    var figPt = new THREE.Vector3();
 
-  // --------------------------------------------------
-  // 자유 이동 모드
-  // --------------------------------------------------
-  var pt2 = new THREE.Vector3();
+    if(raycaster.ray.intersectPlane(dragPlane, figPt)){
+      draggedFigure.sprite.position.x = figPt.x;
+      draggedFigure.sprite.position.z = figPt.z;
+    }
 
-  if(raycaster.ray.intersectPlane(dragPlane, pt2)){
+    return;
+  }
 
-    pt2.y = Math.max(
-      selected.h / 2 * 0.2,
-      Math.min(
-        ceilingHeight - 0.02,
-        pt2.y
-      )
-    );
+  if(dragKind === 'islandwall' && draggedIslandWall){
+    var wallPt = new THREE.Vector3();
 
-    selected.group.position.copy(pt2);
+    if(raycaster.ray.intersectPlane(dragPlane, wallPt)){
+      draggedIslandWall.group.position.x = wallPt.x;
+      draggedIslandWall.group.position.z = wallPt.z;
 
-    selected.snapped = false;
-    selected.wall = null;
+      updateIslandWallTransformData(draggedIslandWall);
+    }
 
-    applyRoll(selected);
+    return;
   }
 }
 
-if(selected.heightLocked){
-  applyHeightLock(selected);
-}
+  function startDragFigure(fig){
+  dragging = true;
+  orbiting = false;
+  dragKind = 'figure';
+  draggedFigure = fig;
 
-updateDistanceReadouts(selected);
-    if(selected.heightLocked) applyHeightLock(selected);
-    updateDistanceReadouts(selected);
-  }
+  dragPlane.setFromNormalAndCoplanarPoint(
+    floorPlaneY0.normal,
+    new THREE.Vector3(
+      fig.sprite.position.x,
+      0,
+      fig.sprite.position.z
+    )
+  );
+}
 
   function placeOnWall(art, wall, point){
   var y = Math.max(
