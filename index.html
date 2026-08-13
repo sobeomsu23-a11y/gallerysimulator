@@ -1225,7 +1225,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
   function initScene(){
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(AAAAAA);
+    scene.background = new THREE.Color(0xAAAAAA);
 
     camera = new THREE.PerspectiveCamera(focalLengthToFov(currentFocalLengthMm), Math.max(threeContainerHolder.clientWidth,1)/Math.max(threeContainerHolder.clientHeight,1), 0.05, 500);
 
