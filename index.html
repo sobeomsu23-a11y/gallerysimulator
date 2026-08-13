@@ -211,6 +211,10 @@
         <div class="hint">도면 안쪽에서 두 점을 순서대로 클릭하면 독립된 벽 선이 하나 그려져요. 여러 개 그릴 수 있고, 3D 공간을 생성하면 실제 벽으로 만들어집니다.</div>
         <div id="island-segment-list"></div>
 
+        <label class="field-label">문/창문으로 뚫린 벽 (선택 사항)</label>
+        <button class="btn" id="btn-toggle-opening-draw">뚫린 벽 표시하기</button>
+        <div class="hint">표시 모드를 켠 뒤 벽 선을 클릭하면 그 구간이 문·창문처럼 뚫린 벽(점선)으로 바뀌어요. 다시 클릭하면 원래대로 막힌 벽이 됩니다. 3D 공간에서는 이 구간에 벽이 세워지지 않습니다.</div>
+
         <button class="btn btn-primary" id="btn-build-3d" style="margin-top:14px;">3D 공간 생성</button>
       </div>
     </div>
@@ -393,6 +397,8 @@
   var points = [];
   var img = null;
   var polyClosed = false;
+  var openEdges = {};
+  var openingMode = false;
 
   var scene, camera, renderer, threeContainer;
   var target = new THREE.Vector3(0,1.5,0);
@@ -459,6 +465,7 @@
   var iwRotateSlider = $('iw-rotate-slider'), iwRotateVal = $('iw-rotate-val');
   var btnDeleteIslandWall = $('btn-delete-island-wall');
   var btnToggleIslandDraw = $('btn-toggle-island-draw'), islandSegmentList = $('island-segment-list');
+  var btnToggleOpeningDraw = $('btn-toggle-opening-draw');
 
   var sizeModal = $('size-modal'), modalFilename = $('modal-filename'), modalPreview = $('modal-preview');
   var modalWcm = $('modal-w-cm'), modalHcm = $('modal-h-cm'), modalLockRatio = $('modal-lock-ratio');
@@ -495,7 +502,7 @@
     fpCanvas.width = w; fpCanvas.height = h;
     fpEmpty.style.display = 'none';
     fpCanvasWrap.style.display = 'block';
-    points = []; polyClosed = false;
+    points = []; polyClosed = false; openEdges = {};
     autoDetectRow.style.display = 'block';
     traceHint.style.display = 'block';
     traceHint.textContent = '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다. 점을 더블클릭하면 삭제됩니다.';
@@ -509,14 +516,24 @@
     ctx.clearRect(0,0,fpCanvas.width, fpCanvas.height);
     ctx.drawImage(img, 0, 0, fpCanvas.width, fpCanvas.height);
     if(points.length){
-      ctx.strokeStyle = '#c9a24b';
-      ctx.fillStyle = '#c9a24b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for(var i=1;i<points.length;i++){ ctx.lineTo(points[i].x, points[i].y); }
-      if(polyClosed) ctx.closePath();
-      ctx.stroke();
+      var nEdges = polyClosed ? points.length : points.length - 1;
+      for(var ei=0; ei<nEdges; ei++){
+        var pa = points[ei], pb = points[(ei+1)%points.length];
+        var isOpenEdge = polyClosed && !!openEdges[ei];
+        ctx.beginPath();
+        ctx.moveTo(pa.x, pa.y);
+        ctx.lineTo(pb.x, pb.y);
+        ctx.lineWidth = 2;
+        if(isOpenEdge){
+          ctx.strokeStyle = '#c0645a';
+          ctx.setLineDash([7,5]);
+        } else {
+          ctx.strokeStyle = '#c9a24b';
+          ctx.setLineDash([]);
+        }
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
       points.forEach(function(p, i){
         ctx.beginPath();
         ctx.arc(p.x, p.y, i===0?6:4, 0, Math.PI*2);
@@ -566,6 +583,27 @@
     return best;
   }
 
+  function distToSegment(x,y,p1,p2){
+    var dx=p2.x-p1.x, dy=p2.y-p1.y;
+    var lenSq = dx*dx+dy*dy;
+    if(lenSq < 1e-6) return Math.hypot(x-p1.x, y-p1.y);
+    var t = ((x-p1.x)*dx + (y-p1.y)*dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    var px = p1.x + t*dx, py = p1.y + t*dy;
+    return Math.hypot(x-px, y-py);
+  }
+
+  function findNearestEdgeIdx(x,y,thresh){
+    if(!polyClosed) return -1;
+    var best=-1, bestD=thresh;
+    var n = points.length;
+    for(var i=0;i<n;i++){
+      var d = distToSegment(x, y, points[i], points[(i+1)%n]);
+      if(d<bestD){ bestD=d; best=i; }
+    }
+    return best;
+  }
+
   var activePointIdx = -1, pressStart = null, didDragPoint = false;
 
   fpCanvas.addEventListener('pointerdown', function(e){
@@ -580,6 +618,17 @@
         updateIslandSegmentListUI();
       }
       redrawFp();
+      return;
+    }
+    if(openingMode){
+      var orRect = fpCanvas.getBoundingClientRect();
+      var ox = e.clientX - orRect.left, oy = e.clientY - orRect.top;
+      var eidx = findNearestEdgeIdx(ox, oy, 10);
+      if(eidx !== -1){
+        if(openEdges[eidx]) delete openEdges[eidx];
+        else openEdges[eidx] = true;
+        redrawFp();
+      }
       return;
     }
     var rect = fpCanvas.getBoundingClientRect();
@@ -645,6 +694,7 @@
       return;
     }
     points.splice(idx, 1);
+    openEdges = {};
     if(!polyClosed){
       btnFinishPoly.disabled = points.length < 3;
     }
@@ -656,8 +706,26 @@
   btnToggleIslandDraw.addEventListener('click', function(){
     islandWallMode = !islandWallMode;
     islandDrawStart = null;
+    if(islandWallMode && openingMode){
+      openingMode = false;
+      btnToggleOpeningDraw.classList.remove('active');
+      btnToggleOpeningDraw.textContent = '뚫린 벽 표시하기';
+    }
     btnToggleIslandDraw.classList.toggle('active', islandWallMode);
     btnToggleIslandDraw.textContent = islandWallMode ? '독립 벽 그리기 중… (다시 누르면 종료)' : '독립 벽 그리기';
+    redrawFp();
+  });
+
+  btnToggleOpeningDraw.addEventListener('click', function(){
+    openingMode = !openingMode;
+    if(openingMode && islandWallMode){
+      islandWallMode = false;
+      islandDrawStart = null;
+      btnToggleIslandDraw.classList.remove('active');
+      btnToggleIslandDraw.textContent = '독립 벽 그리기';
+    }
+    btnToggleOpeningDraw.classList.toggle('active', openingMode);
+    btnToggleOpeningDraw.textContent = openingMode ? '뚫린 벽 표시 중… (다시 누르면 종료)' : '뚫린 벽 표시하기';
     redrawFp();
   });
 
@@ -682,7 +750,7 @@
   }
 
   btnResetPoints.addEventListener('click', function(){
-    points = []; polyClosed = false;
+    points = []; polyClosed = false; openEdges = {};
     btnFinishPoly.disabled = true;
     scaleInputs.style.display = 'none';
     redrawFp();
@@ -880,6 +948,7 @@
     var scaleToDisplay = fpCanvas.width / aw;
     points = simplified.map(function(p){ return {x:p.x*scaleToDisplay, y:p.y*scaleToDisplay}; });
     polyClosed = true;
+    openEdges = {};
     btnFinishPoly.disabled = false;
     traceHint.textContent = '자동 인식된 바닥 모양입니다 (꼭짓점 ' + points.length + '개). 점을 드래그해 원하는 대로 다듬거나, 더블클릭해 불필요한 점을 삭제할 수 있어요. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
     scaleInputs.style.display = 'block';
@@ -1052,20 +1121,24 @@
       var dot=nx*toCx+nz*toCz;
       if(dot>0){ nx=-nx; nz=-nz; }
       var inward = new THREE.Vector3(-nx,0,-nz).normalize();
+      var isOpenWall = !!openEdges[i];
+      var wallMesh = null;
 
-      var wallGeo = new THREE.PlaneGeometry(len, ceilingHeight);
-      var wallMesh = new THREE.Mesh(wallGeo, wallMat);
-      wallMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(nx,0,nz));
-      wallMesh.position.set(midx, ceilingHeight/2, midz);
-      wallMesh.userData.isWall = true;
-      scene.add(wallMesh);
+      if(!isOpenWall){
+        var wallGeo = new THREE.PlaneGeometry(len, ceilingHeight);
+        wallMesh = new THREE.Mesh(wallGeo, wallMat);
+        wallMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(nx,0,nz));
+        wallMesh.position.set(midx, ceilingHeight/2, midz);
+        wallMesh.userData.isWall = true;
+        scene.add(wallMesh);
 
-      var wallEdgeGeo = new THREE.EdgesGeometry(wallGeo);
-      var wallEdges = new THREE.LineSegments(wallEdgeGeo, edgeLineMat);
-      wallEdges.position.z = 0.003;
-      wallMesh.add(wallEdges);
+        var wallEdgeGeo = new THREE.EdgesGeometry(wallGeo);
+        var wallEdges = new THREE.LineSegments(wallEdgeGeo, edgeLineMat);
+        wallEdges.position.z = 0.003;
+        wallMesh.add(wallEdges);
+      }
 
-      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz) });
+      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall });
     }
 
     var xs=pts2d.map(function(p){return p.x;}), ys=pts2d.map(function(p){return p.y;});
@@ -1248,7 +1321,7 @@
 
     if(!selected) return;
     if(snapToggle.checked){
-      var wallMeshes = walls.map(function(w){return w.mesh;});
+      var wallMeshes = walls.filter(function(w){return w.mesh;}).map(function(w){return w.mesh;});
       var hits = raycaster.intersectObjects(wallMeshes);
       if(hits.length){
         var hit = hits[0];
@@ -1417,7 +1490,7 @@
     artworks.push(art);
 
     if(walls.length){
-      var w0 = walls[0];
+      var w0 = walls.filter(function(w){return !w.isOpen;})[0] || walls[0];
       var offsetIdx = artworks.length-1;
       var t = 0.3 + (offsetIdx*0.8) % Math.max(w0.length-0.6, 0.4);
       var basePt = w0.p1.clone().addScaledVector(w0.dir, Math.min(t, w0.length-0.3));
@@ -2034,7 +2107,7 @@
     islandWalls=[]; selectedIslandWall=null;
     islandSegments=[]; islandDrawStart=null; islandWallMode=false;
     artworks=[]; figures=[]; selected=null;
-    points=[]; polyClosed=false; img=null;
+    points=[]; polyClosed=false; openEdges={}; openingMode=false; img=null;
     fpEmpty.style.display='block';
     fpCanvasWrap.style.display='none';
     autoDetectRow.style.display='none';
