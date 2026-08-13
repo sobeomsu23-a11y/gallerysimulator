@@ -144,6 +144,16 @@
   #dist-hud .dh-row{display:flex;justify-content:space-between;padding:3px 0;}
   #dist-hud .dh-row span.v{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;}
 
+  #lens-hud{
+    position:absolute;bottom:18px;left:18px;background:rgba(23,23,26,0.88);backdrop-filter:blur(6px);
+    color:var(--ink);padding:12px 16px;border-radius:var(--radius);font-size:12px;
+    border:1px solid rgba(255,255,255,0.08);min-width:220px;
+  }
+  #lens-hud.hidden{display:none;}
+  #lens-hud .lh-title{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px;display:flex;justify-content:space-between;}
+  #lens-hud .lh-title span.v{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;}
+  #lens-hud input[type="range"]{width:100%;}
+
   #screenshot-flash{ position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s; }
 
   .modal-overlay{position:fixed;inset:0;background:rgba(10,10,10,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
@@ -368,6 +378,11 @@
       드래그: <b>시점 회전</b> · Shift+드래그: <b>평행 이동</b> · 휠: <b>확대/축소</b> · 그림/인체모형 클릭 후 드래그: <b>이동</b>
     </div>
 
+    <div class="lens-hud hidden" id="lens-hud">
+      <div class="lh-title"><span>카메라 화각 (35mm 환산)</span><span class="v" id="focal-length-val">24mm</span></div>
+      <input type="range" id="focal-length-slider" min="10" max="100" step="1" value="24">
+    </div>
+
     <div id="dist-hud">
       <div class="dh-title">바닥 — 그림 거리</div>
       <div class="dh-row"><span>아랫변</span><span class="v" id="hud-bottom">–</span></div>
@@ -421,6 +436,7 @@
   var scene, camera, renderer, threeContainer;
   var target = new THREE.Vector3(0,1.5,0);
   var spherical = { radius: 10, theta: Math.PI/4, phi: Math.PI/2.6 };
+  var currentFocalLengthMm = 24; // 35mm 환산 초점거리(mm). 10~100 범위.
   var orbiting = false, lastMouse = {x:0,y:0};
   var panning = false;
 
@@ -464,6 +480,25 @@
   var scaleInputs = $('scale-inputs'), realWidthInput = $('real-width'), ceilingHeightInput = $('ceiling-height');
   var btnBuild3d = $('btn-build-3d');
   var step1 = $('step1'), step2 = $('step2'), step3 = $('step3'), stepFigures = $('step-figures'), stepFooter = $('step-footer'), vpHud = $('vp-hud');
+  var lensHud = $('lens-hud'), focalLengthSlider = $('focal-length-slider'), focalLengthVal = $('focal-length-val');
+
+  // 35mm(풀프레임, 센서 높이 24mm) 환산 초점거리를 THREE.PerspectiveCamera의 수직 fov(도)로 변환합니다.
+  function focalLengthToFov(mm){
+    return THREE.MathUtils.radToDeg(2*Math.atan(12/mm));
+  }
+
+  function setFocalLength(mm){
+    currentFocalLengthMm = mm;
+    focalLengthVal.textContent = mm + 'mm';
+    if(camera){
+      camera.fov = focalLengthToFov(mm);
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  focalLengthSlider.addEventListener('input', function(){
+    setFocalLength(Number(focalLengthSlider.value));
+  });
   var floorplanStage = $('floorplan-stage'), threeContainerHolder = null;
   var artUploadBtn = $('art-upload-btn'), artFileInput = $('art-file-input'), artworkList = $('artwork-list');
   var btnGroupArt = $('btn-group-art'), btnUngroupArt = $('btn-ungroup-art');
@@ -1068,6 +1103,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     stepIslandWalls.classList.remove('hidden');
     stepFooter.classList.remove('hidden');
     vpHud.classList.remove('hidden');
+    lensHud.classList.remove('hidden');
 
     buildRoom(worldPts);
 
@@ -1188,7 +1224,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
 
-    camera = new THREE.PerspectiveCamera(55, Math.max(threeContainerHolder.clientWidth,1)/Math.max(threeContainerHolder.clientHeight,1), 0.05, 500);
+    camera = new THREE.PerspectiveCamera(focalLengthToFov(currentFocalLengthMm), Math.max(threeContainerHolder.clientWidth,1)/Math.max(threeContainerHolder.clientHeight,1), 0.05, 500);
 
     renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
@@ -2098,6 +2134,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     stepIslandWalls.classList.remove('hidden');
     stepFooter.classList.remove('hidden');
     vpHud.classList.remove('hidden');
+    lensHud.classList.remove('hidden');
 
     buildRoom(pts2d);
     onResize();
@@ -2459,6 +2496,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     stepIslandWalls.classList.add('hidden');
     stepFooter.classList.add('hidden');
     vpHud.classList.add('hidden');
+    lensHud.classList.add('hidden');
     selectedPanel.classList.remove('show');
     distHud.classList.remove('show');
     updateArtworkListUI();
