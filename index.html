@@ -436,6 +436,9 @@
   var scene, camera, renderer, threeContainer;
   var target = new THREE.Vector3(0,1.5,0);
   var spherical = { radius: 10, theta: Math.PI/4, phi: Math.PI/2.6 };
+  var keysDown = {};
+  var ARROW_KEYS = { arrowup:1, arrowdown:1, arrowleft:1, arrowright:1 };
+  var KEY_MOVE_SPEED = 3; // 초당 이동 거리 (미터/초)
   var currentFocalLengthMm = 24; // 35mm 환산 초점거리(mm). 10~100 범위.
   var orbiting = false, lastMouse = {x:0,y:0};
   var panning = false;
@@ -2448,12 +2451,46 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
   /* =========================================================
      RENDER LOOP
   ========================================================= */
+  function updateKeyboardMovement(dt){
+    if(!camera) return;
+    var moveF = 0, moveR = 0;
+    if(keysDown['arrowup']) moveF += 1;
+    if(keysDown['arrowdown']) moveF -= 1;
+    if(keysDown['arrowright']) moveR += 1;
+    if(keysDown['arrowleft']) moveR -= 1;
+    if(moveF===0 && moveR===0) return;
+
+    var forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    if(forward.lengthSq() < 1e-6) return;
+    forward.normalize();
+
+    var right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+    right.y = 0; right.normalize();
+
+    var delta = new THREE.Vector3();
+    delta.addScaledVector(forward, moveF);
+    delta.addScaledVector(right, moveR);
+    if(delta.lengthSq() > 0){
+      delta.normalize().multiplyScalar(KEY_MOVE_SPEED * dt);
+      target.add(delta);
+      updateCamera();
+    }
+  }
+
   var loopStarted = false;
+  var lastFrameTime = null;
   function animate(){
     if(loopStarted) return;
     loopStarted = true;
+    lastFrameTime = performance.now();
     (function loop(){
       requestAnimationFrame(loop);
+      var now = performance.now();
+      var dt = Math.min((now - lastFrameTime)/1000, 0.1);
+      lastFrameTime = now;
+      updateKeyboardMovement(dt);
       if(selected) updateDistanceReadouts(selected);
       if(renderer) renderer.render(scene, camera);
     })();
@@ -2516,8 +2553,18 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     } else if((e.ctrlKey || e.metaKey) && key==='y'){
       e.preventDefault();
       performRedo();
+    } else if(ARROW_KEYS[key] && scene && !threeContainerHolder.classList.contains('hidden')){
+      keysDown[key] = true;
+      e.preventDefault();
     }
   });
+
+  window.addEventListener('keyup', function(e){
+    var key = e.key ? e.key.toLowerCase() : '';
+    if(ARROW_KEYS[key]) keysDown[key] = false;
+  });
+
+  window.addEventListener('blur', function(){ keysDown = {}; });
 
   [selWcm, selHcm, selDcm, rotateSlider, heightLockCm, heightLockToggle, iwLength, iwThickness, iwHeight, iwRotateSlider].forEach(function(el){
     el.addEventListener('change', function(){ pushHistory(); });
