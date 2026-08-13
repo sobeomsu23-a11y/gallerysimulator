@@ -204,6 +204,12 @@
         <label class="field-label">천장(벽) 높이 (m)</label>
         <input type="number" id="ceiling-height" value="3" step="0.1" min="1.5">
         <div class="hint">도면에 표기된 실측 수치를 확인해 입력하거나, 원하는 값으로 직접 설정하세요.</div>
+
+        <label class="field-label">독립 벽 (선택 사항)</label>
+        <button class="btn" id="btn-toggle-island-draw">독립 벽 그리기</button>
+        <div class="hint">도면 안쪽에서 두 점을 순서대로 클릭하면 독립된 벽 선이 하나 그려져요. 여러 개 그릴 수 있고, 3D 공간을 생성하면 실제 벽으로 만들어집니다.</div>
+        <div id="island-segment-list"></div>
+
         <button class="btn btn-primary" id="btn-build-3d" style="margin-top:14px;">3D 공간 생성</button>
       </div>
     </div>
@@ -403,6 +409,10 @@
   var islandWalls = [];
   var islandWallCount = 0;
   var selectedIslandWall = null;
+  var islandWallMode = false;
+  var islandSegments = [];
+  var islandDrawStart = null;
+  var islandHoverPt = null;
   var islandWallMat = new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 });
   var islandEdgeMat = new THREE.LineBasicMaterial({ color:0x1a1a1a });
   var selected = null;
@@ -447,6 +457,7 @@
   var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThickness = $('iw-thickness');
   var iwRotateSlider = $('iw-rotate-slider'), iwRotateVal = $('iw-rotate-val');
   var btnDeleteIslandWall = $('btn-delete-island-wall');
+  var btnToggleIslandDraw = $('btn-toggle-island-draw'), islandSegmentList = $('island-segment-list');
 
   var sizeModal = $('size-modal'), modalFilename = $('modal-filename'), modalPreview = $('modal-preview');
   var modalWcm = $('modal-w-cm'), modalHcm = $('modal-h-cm'), modalLockRatio = $('modal-lock-ratio');
@@ -515,6 +526,34 @@
         ctx.stroke();
       });
     }
+
+    if(islandSegments.length){
+      ctx.strokeStyle = '#3b6fd4';
+      ctx.lineWidth = 3;
+      islandSegments.forEach(function(s){
+        ctx.beginPath();
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x2, s.y2);
+        ctx.stroke();
+      });
+    }
+
+    if(islandWallMode && islandDrawStart){
+      ctx.fillStyle = '#3b6fd4';
+      ctx.beginPath();
+      ctx.arc(islandDrawStart.x, islandDrawStart.y, 5, 0, Math.PI*2);
+      ctx.fill();
+      if(islandHoverPt){
+        ctx.strokeStyle = '#3b6fd4';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6,4]);
+        ctx.beginPath();
+        ctx.moveTo(islandDrawStart.x, islandDrawStart.y);
+        ctx.lineTo(islandHoverPt.x, islandHoverPt.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
   }
 
   function findNearestPointIdx(x,y,thresh){
@@ -529,6 +568,19 @@
   var activePointIdx = -1, pressStart = null, didDragPoint = false;
 
   fpCanvas.addEventListener('pointerdown', function(e){
+    if(islandWallMode){
+      var iwRect = fpCanvas.getBoundingClientRect();
+      var ix = e.clientX - iwRect.left, iy = e.clientY - iwRect.top;
+      if(islandDrawStart===null){
+        islandDrawStart = {x:ix, y:iy};
+      } else {
+        islandSegments.push({x1:islandDrawStart.x, y1:islandDrawStart.y, x2:ix, y2:iy});
+        islandDrawStart = null;
+        updateIslandSegmentListUI();
+      }
+      redrawFp();
+      return;
+    }
     var rect = fpCanvas.getBoundingClientRect();
     var x = e.clientX - rect.left, y = e.clientY - rect.top;
     pressStart = {x:x,y:y};
@@ -537,6 +589,14 @@
   });
 
   fpCanvas.addEventListener('pointermove', function(e){
+    if(islandWallMode){
+      if(islandDrawStart){
+        var iwRect = fpCanvas.getBoundingClientRect();
+        islandHoverPt = {x:e.clientX-iwRect.left, y:e.clientY-iwRect.top};
+        redrawFp();
+      }
+      return;
+    }
     if(pressStart===null) return;
     var rect = fpCanvas.getBoundingClientRect();
     var x = e.clientX - rect.left, y = e.clientY - rect.top;
@@ -553,6 +613,7 @@
   });
 
   fpCanvas.addEventListener('pointerup', function(e){
+    if(islandWallMode) return;
     if(pressStart===null){ return; }
     var rect = fpCanvas.getBoundingClientRect();
     var x = e.clientX - rect.left, y = e.clientY - rect.top;
@@ -571,6 +632,34 @@
     activePointIdx = -1;
     pressStart = null;
   });
+
+  btnToggleIslandDraw.addEventListener('click', function(){
+    islandWallMode = !islandWallMode;
+    islandDrawStart = null;
+    btnToggleIslandDraw.classList.toggle('active', islandWallMode);
+    btnToggleIslandDraw.textContent = islandWallMode ? '독립 벽 그리기 중… (다시 누르면 종료)' : '독립 벽 그리기';
+    redrawFp();
+  });
+
+  function updateIslandSegmentListUI(){
+    islandSegmentList.innerHTML = '';
+    islandSegments.forEach(function(s, idx){
+      var item = document.createElement('div');
+      item.className = 'art-item';
+      var nm = document.createElement('div');
+      nm.className = 'art-name';
+      nm.textContent = '독립 벽 선 ' + (idx+1);
+      var del = document.createElement('div');
+      del.className = 'art-del'; del.textContent = '✕';
+      del.addEventListener('click', function(){
+        islandSegments.splice(idx,1);
+        updateIslandSegmentListUI();
+        redrawFp();
+      });
+      item.appendChild(nm); item.appendChild(del);
+      islandSegmentList.appendChild(item);
+    });
+  }
 
   btnResetPoints.addEventListener('click', function(){
     points = []; polyClosed = false;
@@ -851,10 +940,19 @@
     step2.classList.remove('hidden');
     step3.classList.remove('hidden');
     stepFigures.classList.remove('hidden');
+    stepIslandWalls.classList.remove('hidden');
     stepFooter.classList.remove('hidden');
     vpHud.classList.remove('hidden');
 
     buildRoom(worldPts);
+
+    islandSegments.forEach(function(s){
+      var p1 = new THREE.Vector3((s.x1-minX)*scale, 0, (s.y1-minY)*scale);
+      var p2 = new THREE.Vector3((s.x2-minX)*scale, 0, (s.y2-minY)*scale);
+      createIslandWallFromPoints(p1, p2, 0.12);
+    });
+    updateIslandWallListUI();
+
     onResize();
     requestAnimationFrame(function(){ onResize(); animate(); });
   });
@@ -1792,6 +1890,37 @@ updateDistanceReadouts(selected);
     selectIslandWall(iw);
   }
 
+  function createIslandWallFromPoints(p1, p2, thicknessMeters){
+    var length = p1.distanceTo(p2);
+    if(length < 0.05) return null;
+
+    var group = new THREE.Group();
+    group.position.set((p1.x+p2.x)/2, 0, (p1.z+p2.z)/2);
+    group.rotation.y = Math.atan2(-(p2.z-p1.z), (p2.x-p1.x));
+    group.userData.isWall = true;
+
+    var boxMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), islandWallMat);
+    group.add(boxMesh);
+    var frontPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
+    group.add(frontPlane);
+    var backPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
+    backPlane.rotation.y = Math.PI;
+    group.add(backPlane);
+    scene.add(group);
+
+    var iw = {
+      id:'iwall'+(islandWallCount++),
+      group:group, boxMesh:boxMesh, frontPlane:frontPlane, backPlane:backPlane,
+      length:length, thickness:thicknessMeters, height:ceilingHeight,
+      frontEntry:{ mesh:frontPlane, p1:null,p2:null,inward:null,dir:null,length:length },
+      backEntry:{ mesh:backPlane, p1:null,p2:null,inward:null,dir:null,length:length }
+    };
+    rebuildIslandWallGeometry(iw);
+    walls.push(iw.frontEntry, iw.backEntry);
+    islandWalls.push(iw);
+    return iw;
+  }
+
   function selectIslandWall(iw){
     selectedIslandWall = iw;
     selected = null;
@@ -1948,6 +2077,7 @@ updateDistanceReadouts(selected);
     artworks.forEach(function(a){ scene.remove(a.group); });
     figures.forEach(function(f){ scene.remove(f.sprite); });
     islandWalls=[]; selectedIslandWall=null;
+    islandSegments=[]; islandDrawStart=null; islandWallMode=false;
     artworks=[]; figures=[]; selected=null;
     points=[]; polyClosed=false; img=null;
     fpEmpty.style.display='block';
@@ -1961,6 +2091,7 @@ updateDistanceReadouts(selected);
     step2.classList.add('hidden');
     step3.classList.add('hidden');
     stepFigures.classList.add('hidden');
+    stepIslandWalls.classList.add('hidden');
     stepFooter.classList.add('hidden');
     vpHud.classList.add('hidden');
     selectedPanel.classList.remove('show');
