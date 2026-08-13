@@ -1036,6 +1036,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
   }
 
   btnBuild3d.addEventListener('click', function(){
+    historySuppressed = true;
     var minX = Math.min.apply(null, points.map(function(p){return p.x;}));
     var maxX = Math.max.apply(null, points.map(function(p){return p.x;}));
     var minY = Math.min.apply(null, points.map(function(p){return p.y;}));
@@ -1069,6 +1070,9 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
     onResize();
     requestAnimationFrame(function(){ onResize(); animate(); });
+    historySuppressed = false;
+    undoStack = []; redoStack = [];
+    pushHistory();
   });
 
   /* =========================================================
@@ -1270,13 +1274,14 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     });
 
     window.addEventListener('pointerup', function(){
+      var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall');
       orbiting = false;
       panning = false;
       dragging = false;
       dragKind = null;
       draggedFigure = null;
       draggedIslandWall = null;
-      groupMoveInfo = null;
+      if(wasPlacementDrag) pushHistory();
     });
 
     dom.addEventListener('wheel', function(e){
@@ -1460,6 +1465,132 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
   }
 
   /* =========================================================
+     UNDO / REDO
+  ========================================================= */
+  var undoStack = [];
+  var redoStack = [];
+  var historySuppressed = false;
+  var UNDO_LIMIT = 20; // 메모리가 부담되면 이 숫자를 줄이세요.
+
+  function snapshotState(){
+    return {
+      artworks: artworks.map(function(a){
+        var mat = Array.isArray(a.plane.material) ? a.plane.material[4] : a.plane.material;
+        return {
+          name:a.name, dataUrl: mat.map.image.src,
+          w:a.w, h:a.h, d:a.d,
+          position:{x:a.group.position.x, y:a.group.position.y, z:a.group.position.z},
+          quaternion:{x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w},
+          roll:a.roll, snapped:a.snapped,
+          heightLocked:a.heightLocked, heightLockRef:a.heightLockRef, heightLockValue:a.heightLockValue,
+          groupId:a.groupId
+        };
+      }),
+      figures: figures.map(function(f){
+        return { type:f.type, position:{x:f.sprite.position.x, z:f.sprite.position.z} };
+      }),
+      islandWalls: islandWalls.map(function(iw){
+        return {
+          position:{x:iw.group.position.x, z:iw.group.position.z},
+          rotationY: iw.group.rotation.y,
+          length:iw.length, thickness:iw.thickness, height:iw.height
+        };
+      })
+    };
+  }
+
+  function applySnapshot(data){
+    if(!scene) return;
+    historySuppressed = true;
+
+    artworks.slice().forEach(function(a){ scene.remove(a.group); });
+    figures.slice().forEach(function(f){ scene.remove(f.sprite); });
+    islandWalls.slice().forEach(function(iw){
+      scene.remove(iw.group);
+      walls = walls.filter(function(w){ return w!==iw.frontEntry && w!==iw.backEntry; });
+    });
+    artworks = []; figures = []; islandWalls = [];
+    selected = null; selectedIslandWall = null; multiSelectedArtworks = [];
+    selectedPanel.classList.remove('show');
+    islandWallPanel.classList.remove('show');
+    distHud.classList.remove('show');
+
+    var promises = (data.artworks||[]).map(function(saved){
+      return new Promise(function(resolve){
+        var image = new Image();
+        image.onload = function(){
+          createArtwork(image, saved.dataUrl, saved.name, saved.w, saved.h);
+          var a = artworks[artworks.length-1];
+          if(saved.d) resizeArtworkDepth(a, saved.d);
+          a.group.position.set(saved.position.x, saved.position.y, saved.position.z);
+          a.group.quaternion.set(saved.quaternion.x, saved.quaternion.y, saved.quaternion.z, saved.quaternion.w);
+          a.roll = saved.roll||0;
+          a.snapped = !!saved.snapped;
+          a.heightLocked = !!saved.heightLocked;
+          a.heightLockRef = saved.heightLockRef||'bottom';
+          a.heightLockValue = saved.heightLockValue||0;
+          a.groupId = saved.groupId||null;
+          if(a.snapped){
+            var bestWall=null, bestD=Infinity;
+            walls.forEach(function(w){
+              var d = Math.abs(a.group.position.clone().sub(w.p1).dot(w.inward));
+              if(d<bestD){ bestD=d; bestWall=w; }
+            });
+            if(bestWall) a.wall = bestWall;
+          }
+          resolve();
+        };
+        image.src = saved.dataUrl;
+      });
+    });
+
+    Promise.all(promises).then(function(){
+      (data.figures||[]).forEach(function(f){
+        addFigure(f.type);
+        var nf = figures[figures.length-1];
+        nf.sprite.position.x = f.position.x;
+        nf.sprite.position.z = f.position.z;
+      });
+      (data.islandWalls||[]).forEach(function(saved){
+        createIslandWall();
+        var iw = islandWalls[islandWalls.length-1];
+        iw.group.position.set(saved.position.x, 0, saved.position.z);
+        iw.group.rotation.y = saved.rotationY||0;
+        iw.length = saved.length; iw.thickness = saved.thickness; iw.height = saved.height;
+        rebuildIslandWallGeometry(iw);
+      });
+      updateArtworkListUI();
+      updateFigureListUI();
+      updateIslandWallListUI();
+      historySuppressed = false;
+    });
+  }
+
+  function pushHistory(){
+    if(historySuppressed || !scene) return;
+    var snap = snapshotState();
+    var json = JSON.stringify(snap);
+    var last = undoStack.length ? undoStack[undoStack.length-1] : null;
+    if(last && last.json === json) return;
+    undoStack.push({ data:snap, json:json });
+    if(undoStack.length > UNDO_LIMIT) undoStack.shift();
+    redoStack = [];
+  }
+
+  function performUndo(){
+    if(undoStack.length < 2) return;
+    redoStack.push(undoStack.pop());
+    applySnapshot(undoStack[undoStack.length-1].data);
+  }
+
+  function performRedo(){
+    if(!redoStack.length) return;
+    var next = redoStack.pop();
+    undoStack.push(next);
+    applySnapshot(next.data);
+  }
+
+  /* =========================================================
      ARTWORKS
   ========================================================= */
   var uploadQueue = [];
@@ -1589,6 +1720,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
     updateArtworkListUI();
     selectArtwork(art);
+    pushHistory();
   }
 
   function resizeArtwork(art, wM, hM){
@@ -1687,6 +1819,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     }
     if(selected===a){ selected=null; selectedPanel.classList.remove('show'); distHud.classList.remove('show'); }
     updateArtworkListUI();
+    pushHistory();
   }
 
   btnDeleteArt.addEventListener('click', function(){ if(selected) deleteArtwork(selected); });
@@ -1697,6 +1830,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     multiSelectedArtworks.forEach(function(a){ a.groupId = gid; });
     multiSelectedArtworks = [];
     updateArtworkListUI();
+    pushHistory();
   }
 
   function ungroupArtwork(a){
@@ -1704,6 +1838,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     var gid = a.groupId;
     artworks.forEach(function(x){ if(x.groupId===gid) x.groupId = null; });
     updateArtworkListUI();
+    pushHistory();
   }
 
   btnGroupArt.addEventListener('click', groupSelectedArtworks);
@@ -1900,6 +2035,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
   function loadSceneFromData(data){
     if(!data || !data.room || !data.room.points){ alert('파일 형식이 올바르지 않습니다.'); return; }
+    historySuppressed = true;
 
     var pts2d = data.room.points.map(function(p){ return new THREE.Vector2(p.x, p.y); });
     ceilingHeight = data.room.ceilingHeight || 3;
@@ -1961,6 +2097,9 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       selected = null;
       selectedPanel.classList.remove('show');
       distHud.classList.remove('show');
+      historySuppressed = false;
+      undoStack = []; redoStack = [];
+      pushHistory();
     });
   }
 
@@ -2044,6 +2183,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     islandWalls.push(iw);
     updateIslandWallListUI();
     selectIslandWall(iw);
+    pushHistory();
   }
 
   function createIslandWallFromPoints(p1, p2, thicknessMeters){
@@ -2101,6 +2241,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       islandWallPanel.classList.remove('show');
     }
     updateIslandWallListUI();
+    pushHistory();
   }
 
   function updateIslandWallListUI(){
@@ -2174,12 +2315,14 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     var fig = { sprite:sprite, type:type, height:H, id:'fig'+(figCount++) };
     figures.push(fig);
     updateFigureListUI();
+    pushHistory();
   }
 
   function deleteFigure(f){
     scene.remove(f.sprite);
     figures = figures.filter(function(x){return x!==f;});
     updateFigureListUI();
+    pushHistory();
   }
 
   function updateFigureListUI(){
@@ -2263,6 +2406,27 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     updateFigureListUI();
     updateIslandWallListUI();
     islandWallPanel.classList.remove('show');
+    undoStack = []; redoStack = [];
+  });
+
+  window.addEventListener('keydown', function(e){
+    var tag = document.activeElement ? document.activeElement.tagName : '';
+    if(tag==='INPUT' || tag==='TEXTAREA') return;
+    var key = e.key ? e.key.toLowerCase() : '';
+    if((e.ctrlKey || e.metaKey) && key==='z'){
+      e.preventDefault();
+      if(e.shiftKey) performRedo(); else performUndo();
+    } else if((e.ctrlKey || e.metaKey) && key==='y'){
+      e.preventDefault();
+      performRedo();
+    }
+  });
+
+  [selWcm, selHcm, selDcm, rotateSlider, heightLockCm, heightLockToggle, iwLength, iwThickness, iwHeight, iwRotateSlider].forEach(function(el){
+    el.addEventListener('change', function(){ pushHistory(); });
+  });
+  [refBottomBtn, refCenterBtn, refTopBtn].forEach(function(btn){
+    btn.addEventListener('click', function(){ pushHistory(); });
   });
 
 })();
