@@ -498,7 +498,7 @@
     points = []; polyClosed = false;
     autoDetectRow.style.display = 'block';
     traceHint.style.display = 'block';
-    traceHint.textContent = '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다.';
+    traceHint.textContent = '도    traceHint.textContent = '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다. 점을 더블클릭하면 삭제됩니다.';
     traceControls.style.display = 'flex';
     scaleInputs.style.display = 'none';
     btnFinishPoly.disabled = true;
@@ -634,6 +634,27 @@
     pressStart = null;
   });
 
+  fpCanvas.addEventListener('dblclick', function(e){
+    if(islandWallMode) return;
+    var rect = fpCanvas.getBoundingClientRect();
+    var x = e.clientX - rect.left, y = e.clientY - rect.top;
+    var idx = findNearestPointIdx(x, y, 10);
+    if(idx === -1) return;
+    if(points.length <= 3){
+      alert('점이 3개 미만이 되면 도형을 만들 수 없어요. 최소 3개는 남겨두어야 합니다.');
+      return;
+    }
+    points.splice(idx, 1);
+    if(!polyClosed){
+      btnFinishPoly.disabled = points.length < 3;
+    }
+    activePointIdx = -1;
+    pressStart = null;
+    redrawFp();
+  });
+
+  btnToggleIslandDraw.addEventListener('click', function(){
+
   btnToggleIslandDraw.addEventListener('click', function(){
     islandWallMode = !islandWallMode;
     islandDrawStart = null;
@@ -674,7 +695,7 @@
   function finishPolygon(){
     if(points.length < 3) return;
     polyClosed = true;
-    traceHint.textContent = '점을 드래그하면 위치를 세밀하게 조정할 수 있습니다. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
+    traceHint.textContent = '점을 드래그하면 위치를 세밀하게 조정할 수 있습니다. 점을 더블클릭하면 삭제됩니다. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
     redrawFp();
     scaleInputs.style.display = 'block';
   }
@@ -862,7 +883,7 @@
     points = simplified.map(function(p){ return {x:p.x*scaleToDisplay, y:p.y*scaleToDisplay}; });
     polyClosed = true;
     btnFinishPoly.disabled = false;
-    traceHint.textContent = '자동 인식된 바닥 모양입니다 (꼭짓점 ' + points.length + '개). 점을 드래그해 원하는 대로 다듬을 수 있어요. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
+    traceHint.textContent = '자동 인식된 바닥 모양입니다 (꼭짓점 ' + points.length + '개). 점을 드래그해 원하는 대로 다듬거나, 더블클릭해 불필요한 점을 삭제할 수 있어요. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
     scaleInputs.style.display = 'block';
     redrawFp();
   }
