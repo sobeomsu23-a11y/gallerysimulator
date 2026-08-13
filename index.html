@@ -437,7 +437,7 @@
   var btnResetPoints = $('btn-reset-points'), btnFinishPoly = $('btn-finish-poly');
   var scaleInputs = $('scale-inputs'), realWidthInput = $('real-width'), ceilingHeightInput = $('ceiling-height');
   var btnBuild3d = $('btn-build-3d');
-  var step2 = $('step2'), step3 = $('step3'), stepFigures = $('step-figures'), stepFooter = $('step-footer'), vpHud = $('vp-hud');
+  var step1 = $('step1'), step2 = $('step2'), step3 = $('step3'), stepFigures = $('step-figures'), stepFooter = $('step-footer'), vpHud = $('vp-hud');
   var floorplanStage = $('floorplan-stage'), threeContainerHolder = null;
   var artUploadBtn = $('art-upload-btn'), artFileInput = $('art-file-input'), artworkList = $('artwork-list');
   var snapToggle = $('snap-toggle');
@@ -950,6 +950,7 @@
 
     floorplanStage.classList.add('hidden');
     threeContainerHolder.classList.remove('hidden');
+    step1.classList.add('hidden');
     step2.classList.remove('hidden');
     step3.classList.remove('hidden');
     stepFigures.classList.remove('hidden');
@@ -1685,6 +1686,7 @@
 
     floorplanStage.classList.add('hidden');
     threeContainerHolder.classList.remove('hidden');
+    step1.classList.add('hidden');
     step2.classList.remove('hidden');
     step3.classList.remove('hidden');
     stepFigures.classList.remove('hidden');
@@ -2022,6 +2024,7 @@
     scaleInputs.style.display='none';
     floorplanStage.classList.remove('hidden');
     threeContainerHolder.classList.add('hidden');
+    step1.classList.remove('hidden');
     step2.classList.add('hidden');
     step3.classList.add('hidden');
     stepFigures.classList.add('hidden');
