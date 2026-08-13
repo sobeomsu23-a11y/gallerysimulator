@@ -1983,10 +1983,12 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
   }
 
   function serializeScene(){
-    var roomPoints = walls.map(function(w){ return {x:w.p1.x, y:w.p1.z}; });
+    var perim = walls.slice(0, perimeterWallCount);
+    var roomPoints = perim.map(function(w){ return {x:w.p1.x, y:w.p1.z}; });
+    var openEdgesArr = perim.map(function(w){ return !!w.isOpen; });
     return {
-      version: 1,
-      room: { points: roomPoints, ceilingHeight: ceilingHeight },
+      version: 2,
+      room: { points: roomPoints, ceilingHeight: ceilingHeight, openEdges: openEdgesArr },
       artworks: artworks.map(function(a){
         var img = a.plane.material[4].map.image;
         return {
@@ -2001,6 +2003,13 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       }),
       figures: figures.map(function(f){
         return { type: f.type, position: { x:f.sprite.position.x, z:f.sprite.position.z } };
+      }),
+      islandWalls: islandWalls.map(function(iw){
+        return {
+          position: { x:iw.group.position.x, z:iw.group.position.z },
+          rotationY: iw.group.rotation.y,
+          length: iw.length, thickness: iw.thickness, height: iw.height
+        };
       })
     };
   }
@@ -2039,6 +2048,9 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
     var pts2d = data.room.points.map(function(p){ return new THREE.Vector2(p.x, p.y); });
     ceilingHeight = data.room.ceilingHeight || 3;
+
+    openEdges = {};
+    (data.room.openEdges||[]).forEach(function(isOpen, i){ if(isOpen) openEdges[i] = true; });
 
     floorplanStage.classList.add('hidden');
     threeContainerHolder.classList.remove('hidden');
@@ -2092,8 +2104,17 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         newFig.sprite.position.x = f.position.x;
         newFig.sprite.position.z = f.position.z;
       });
+      (data.islandWalls||[]).forEach(function(saved){
+        createIslandWall();
+        var iw = islandWalls[islandWalls.length-1];
+        iw.group.position.set(saved.position.x, 0, saved.position.z);
+        iw.group.rotation.y = saved.rotationY||0;
+        iw.length = saved.length; iw.thickness = saved.thickness; iw.height = saved.height;
+        rebuildIslandWallGeometry(iw);
+      });
       updateArtworkListUI();
       updateFigureListUI();
+      updateIslandWallListUI();
       selected = null;
       selectedPanel.classList.remove('show');
       distHud.classList.remove('show');
