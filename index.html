@@ -416,6 +416,8 @@
   var panning = false;
 
   var walls = [];
+  var perimeterWallCount = 0;
+  var groupMoveInfo = null;
   var floorMesh = null;
   var ceilingHeight = 3;
   var roomCentroid = new THREE.Vector3();
@@ -1150,6 +1152,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
       walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall });
     }
+    perimeterWallCount = walls.length;
 
     var xs=pts2d.map(function(p){return p.x;}), ys=pts2d.map(function(p){return p.y;});
     var maxDim = Math.max(Math.max.apply(null,xs)-Math.min.apply(null,xs), Math.max.apply(null,ys)-Math.min.apply(null,ys));
@@ -1273,6 +1276,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       dragKind = null;
       draggedFigure = null;
       draggedIslandWall = null;
+      groupMoveInfo = null;
     });
 
     dom.addEventListener('wheel', function(e){
@@ -1289,6 +1293,17 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       var camDir = new THREE.Vector3();
       camera.getWorldDirection(camDir);
       dragPlane.setFromNormalAndCoplanarPoint(camDir, art.group.position);
+    }
+    groupMoveInfo = null;
+    if(art.groupId){
+      var leadArc = (art.snapped && art.wall) ? arcLengthOnWall(art.wall, art.group.position) : null;
+      groupMoveInfo = { leadArc: leadArc, offsets: {} };
+      artworks.forEach(function(other){
+        if(other!==art && other.groupId===art.groupId){
+          var oArc = (leadArc!==null && other.snapped && other.wall) ? arcLengthOnWall(other.wall, other.group.position) : null;
+          groupMoveInfo.offsets[other.id] = (oArc!==null) ? (oArc - leadArc) : null;
+        }
+      });
     }
   }
 
@@ -1352,11 +1367,21 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     if(selected.heightLocked) applyHeightLock(selected);
     if(selected.groupId){
       var moveDelta = selected.group.position.clone().sub(prevPos);
+      var leadArcNow = (selected.snapped && selected.wall) ? arcLengthOnWall(selected.wall, selected.group.position) : null;
       artworks.forEach(function(other){
-        if(other!==selected && other.groupId===selected.groupId){
+        if(other===selected || other.groupId!==selected.groupId) return;
+        var offset = groupMoveInfo ? groupMoveInfo.offsets[other.id] : undefined;
+        if(leadArcNow!==null && offset!==null && offset!==undefined){
+          var res = pointAtArcLength(leadArcNow + offset);
+          if(res){
+            var pt = res.point.clone();
+            pt.y = other.group.position.y;
+            placeOnWall(other, res.wall, pt);
+          }
+        } else {
           other.group.position.add(moveDelta);
-          if(other.heightLocked) applyHeightLock(other);
         }
+        if(other.heightLocked) applyHeightLock(other);
       });
     }
     updateDistanceReadouts(selected);
@@ -1370,6 +1395,45 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     art.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), wall.inward);
     art.snapped = true; art.wall = wall;
     applyRoll(art);
+  }
+
+  function getPerimeterWalls(){
+    return walls.slice(0, perimeterWallCount);
+  }
+
+  function getPerimeterLength(){
+    var pw = getPerimeterWalls(), total = 0;
+    pw.forEach(function(w){ total += w.length; });
+    return total;
+  }
+
+  // wall 위의 point가 방 둘레에서 몇 m 지점인지(호 길이) 계산. 둘레 벽이 아니면 null.
+  function arcLengthOnWall(wall, point){
+    var pw = getPerimeterWalls();
+    var idx = pw.indexOf(wall);
+    if(idx===-1) return null;
+    var s = 0;
+    for(var i=0;i<idx;i++) s += pw[i].length;
+    var t = point.clone().sub(wall.p1).dot(wall.dir);
+    t = Math.max(0, Math.min(wall.length, t));
+    return s + t;
+  }
+
+  // 호 길이(s, 음수/초과 가능)를 둘레를 따라 도는 실제 벽+좌표로 변환.
+  function pointAtArcLength(s){
+    var pw = getPerimeterWalls();
+    var total = getPerimeterLength();
+    if(!pw.length || total<=0) return null;
+    var m = ((s % total) + total) % total;
+    for(var i=0;i<pw.length;i++){
+      var w = pw[i];
+      if(m <= w.length || i===pw.length-1){
+        var t = Math.min(Math.max(m,0), w.length);
+        return { wall:w, point: w.p1.clone().addScaledVector(w.dir, t) };
+      }
+      m -= w.length;
+    }
+    return null;
   }
 
   function applyRoll(art){
