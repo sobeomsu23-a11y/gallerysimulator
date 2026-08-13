@@ -781,13 +781,25 @@
       lum[i] = 0.299*r+0.587*g+0.114*b;
     }
     var thr = otsuThreshold(lum, aw*ah);
-    var ink = new Uint8Array(aw*ah);
-    for(var i2=0;i2<aw*ah;i2++){ ink[i2] = lum[i2] < thr ? 1 : 0; }
+    function countInkAt(threshold){
+      var m = new Uint8Array(aw*ah);
+      var c = 0;
+      for(var k=0;k<aw*ah;k++){ if(lum[k] < threshold){ m[k]=1; c++; } }
+      return { mask:m, count:c };
+    }
+    var inkResult = countInkAt(thr);
+    var minInk = Math.max(200, aw*ah*0.0015);
+    var boost = 0;
+    while(inkResult.count < minInk && boost < 120){
+      boost += 15;
+      inkResult = countInkAt(thr + boost);
+    }
+    var ink = inkResult.mask;
 
     var thicknessPx = parseFloat(wallThicknessInput.value) || 4;
-    var rE = Math.max(1, Math.round(thicknessPx/2));
+    var rE = Math.max(0, Math.round((thicknessPx-1)/2));
     var rD = rE + 1;
-    var wallMask = erode(ink, aw, ah, diskOffsets(rE));
+    var wallMask = rE > 0 ? erode(ink, aw, ah, diskOffsets(rE)) : ink;
     wallMask = dilate(wallMask, aw, ah, diskOffsets(rD));
 
     var startX = Math.floor(aw/2), startY = Math.floor(ah/2);
