@@ -327,6 +327,15 @@
         <div class="hint">드래그하거나 크기를 바꿔도 선택한 기준점이 이 높이에 고정됩니다.</div>
       </div>
 
+      <div class="toggle-row" style="margin-top:14px;">
+        <span class="tlabel">벽 바깥쪽으로 걸기</span>
+        <label class="switch">
+          <input type="checkbox" id="face-outward-toggle">
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div class="hint">기본은 전시공간 안쪽을 향해 걸립니다. 켜면 벽의 바깥쪽 면에 걸립니다.</div>
+
       <label class="field-label">바닥 기준 높이</label>
       <div class="dist-row"><span>아랫변</span><span class="v" id="dist-bottom">–</span></div>
       <div class="dist-row"><span>중앙</span><span class="v" id="dist-center">–</span></div>
@@ -465,6 +474,7 @@
   var distBottom = $('dist-bottom'), distCenter = $('dist-center'), distTop = $('dist-top');
   var btnDeleteArt = $('btn-delete-art');
   var heightLockToggle = $('height-lock-toggle'), heightLockOptions = $('height-lock-options'), heightLockCm = $('height-lock-cm');
+  var faceOutwardToggle = $('face-outward-toggle');
   var refBottomBtn = $('ref-bottom'), refCenterBtn = $('ref-center'), refTopBtn = $('ref-top');
   var distHud = $('dist-hud'), hudBottom = $('hud-bottom'), hudCenter = $('hud-center'), hudTop = $('hud-top');
   var btnScreenshot = $('btn-screenshot'), btnRestart = $('btn-restart');
@@ -1125,17 +1135,26 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
     var wallMat = new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 });
     var n = pts2d.length;
+
+    // 도면 전체의 감김 방향(시계/반시계)을 한 번만 계산합니다.
+    // 벽마다 중심점과 비교하는 기존 방식은 오목한 도면(L자 등)에서
+    // 특정 벽만 안쪽/바깥쪽이 뒤집히는 버그가 있었습니다.
+    var signedArea = 0;
+    for(var k=0;k<n;k++){
+      var pk1=pts2d[k], pk2=pts2d[(k+1)%n];
+      signedArea += pk1.x*pk2.y - pk2.x*pk1.y;
+    }
+    var polyIsCCW = signedArea > 0;
+
     for(var i=0;i<n;i++){
       var p1=pts2d[i], p2=pts2d[(i+1)%n];
       var dx=p2.x-p1.x, dz=p2.y-p1.y;
       var len=Math.hypot(dx,dz);
       if(len<0.01) continue;
       var dirx=dx/len, dirz=dz/len;
-      var nx=-dirz, nz=dirx;
+      var nx, nz;
+      if(polyIsCCW){ nx=dirz; nz=-dirx; } else { nx=-dirz; nz=dirx; }
       var midx=(p1.x+p2.x)/2, midz=(p1.y+p2.y)/2;
-      var toCx=cx-midx, toCz=cz-midz;
-      var dot=nx*toCx+nz*toCz;
-      if(dot>0){ nx=-nx; nz=-nz; }
       var inward = new THREE.Vector3(-nx,0,-nz).normalize();
       var isOpenWall = !!openEdges[i];
       var wallMesh = null;
@@ -1393,11 +1412,12 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
   }
 
   function placeOnWall(art, wall, point){
+    var dir = art.faceOutward ? wall.inward.clone().negate() : wall.inward;
     var y = Math.max(art.h/2*0.2, Math.min(ceilingHeight-0.02, point.y));
     var pos = point.clone(); pos.y = y;
-    pos.addScaledVector(wall.inward, 0.015);
+    pos.addScaledVector(dir, 0.015);
     art.group.position.copy(pos);
-    art.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), wall.inward);
+    art.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), dir);
     art.snapped = true; art.wall = wall;
     applyRoll(art);
   }
@@ -1483,7 +1503,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
           quaternion:{x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w},
           roll:a.roll, snapped:a.snapped,
           heightLocked:a.heightLocked, heightLockRef:a.heightLockRef, heightLockValue:a.heightLockValue,
-          groupId:a.groupId
+          groupId:a.groupId, faceOutward:a.faceOutward
         };
       }),
       figures: figures.map(function(f){
@@ -1530,6 +1550,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
           a.heightLockRef = saved.heightLockRef||'bottom';
           a.heightLockValue = saved.heightLockValue||0;
           a.groupId = saved.groupId||null;
+          a.faceOutward = !!saved.faceOutward;
           if(a.snapped){
             var bestWall=null, bestD=Infinity;
             walls.forEach(function(w){
@@ -1702,7 +1723,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       group:group, plane:plane, w:w, h:h, d:d, name:name,
       roll:0, snapped:false, heightLocked:false,
       heightLockRef:'bottom', heightLockValue:0,
-      groupId:null,
+      groupId:null, faceOutward:false,
       id:'art'+(artCount++)
     };
     artworks.push(art);
@@ -1805,6 +1826,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     selHcm.value = (a.h*100).toFixed(1);
     selDcm.value = (a.d*100).toFixed(1);
     heightLockToggle.checked = a.heightLocked;
+    faceOutwardToggle.checked = !!a.faceOutward;
     heightLockOptions.style.display = a.heightLocked ? 'block' : 'none';
     setHeightLockRefUI(a.heightLockRef);
     heightLockCm.value = (a.heightLockValue*100).toFixed(1);
@@ -1852,6 +1874,17 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     selected.roll = parseFloat(rotateSlider.value);
     rotateVal.textContent = selected.roll;
     applyRoll(selected);
+  });
+
+  faceOutwardToggle.addEventListener('change', function(){
+    if(!selected) return;
+    selected.faceOutward = faceOutwardToggle.checked;
+    if(selected.snapped && selected.wall){
+      placeOnWall(selected, selected.wall, selected.group.position.clone());
+    } else {
+      applyRoll(selected);
+    }
+    pushHistory();
   });
 
   heightLockToggle.addEventListener('change', function(){
@@ -2001,7 +2034,8 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
           position: { x:a.group.position.x, y:a.group.position.y, z:a.group.position.z },
           quaternion: { x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w },
           roll: a.roll, snapped: a.snapped,
-          heightLocked: a.heightLocked, heightLockRef: a.heightLockRef, heightLockValue: a.heightLockValue
+          heightLocked: a.heightLocked, heightLockRef: a.heightLockRef, heightLockValue: a.heightLockValue,
+          faceOutward: a.faceOutward
         };
       }),
       figures: figures.map(function(f){
@@ -2083,6 +2117,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
           newArt.heightLocked = !!saved.heightLocked;
           newArt.heightLockRef = saved.heightLockRef||'bottom';
           newArt.heightLockValue = saved.heightLockValue||0;
+          newArt.faceOutward = !!saved.faceOutward;
           if(newArt.snapped){
             var bestWall=null, bestD=Infinity;
             walls.forEach(function(w){
