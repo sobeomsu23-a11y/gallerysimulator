@@ -460,6 +460,7 @@
   var islandDrawStart = null;
   var islandHoverPt = null;
   var islandWallMat = new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 });
+  var ISLAND_WALL_LIFT = 0.004; // 바닥과의 아웃라인 겹침(z-fighting) 방지용 미세 띄움(m)
   var islandEdgeMat = new THREE.LineBasicMaterial({ color:0x1a1a1a });
   var selected = null;
   var dragging = false;
@@ -1615,7 +1616,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       (data.islandWalls||[]).forEach(function(saved){
         createIslandWall();
         var iw = islandWalls[islandWalls.length-1];
-        iw.group.position.set(saved.position.x, 0, saved.position.z);
+        iw.group.position.set(saved.position.x, ISLAND_WALL_LIFT, saved.position.z);
         iw.group.rotation.y = saved.rotationY||0;
         iw.length = saved.length; iw.thickness = saved.thickness; iw.height = saved.height;
         rebuildIslandWallGeometry(iw);
@@ -2186,7 +2187,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       (data.islandWalls||[]).forEach(function(saved){
         createIslandWall();
         var iw = islandWalls[islandWalls.length-1];
-        iw.group.position.set(saved.position.x, 0, saved.position.z);
+        iw.group.position.set(saved.position.x, ISLAND_WALL_LIFT, saved.position.z);
         iw.group.rotation.y = saved.rotationY||0;
         iw.length = saved.length; iw.thickness = saved.thickness; iw.height = saved.height;
         rebuildIslandWallGeometry(iw);
@@ -2255,7 +2256,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
   function createIslandWall(){
     if(!scene) return;
     var group = new THREE.Group();
-    group.position.set(roomCentroid.x, 0, roomCentroid.z);
+    group.position.set(roomCentroid.x, ISLAND_WALL_LIFT, roomCentroid.z);
     group.rotation.y = 0;
     group.userData.isWall = true;
 
@@ -2291,7 +2292,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     if(length < 0.05) return null;
 
     var group = new THREE.Group();
-    group.position.set((p1.x+p2.x)/2, 0, (p1.z+p2.z)/2);
+    group.position.set((p1.x+p2.x)/2, ISLAND_WALL_LIFT, (p1.z+p2.z)/2);
     group.rotation.y = Math.atan2(-(p2.z-p1.z), (p2.x-p1.x));
     group.userData.isWall = true;
 
