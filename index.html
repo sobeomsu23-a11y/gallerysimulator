@@ -1564,7 +1564,8 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         return {
           position:{x:iw.group.position.x, z:iw.group.position.z},
           rotationY: iw.group.rotation.y,
-          length:iw.length, thickness:iw.thickness, height:iw.height
+          length:iw.length, thickness:iw.thickness, height:iw.height,
+          locked: iw.locked
         };
       })
     };
@@ -1629,6 +1630,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         iw.group.position.set(saved.position.x, ISLAND_WALL_LIFT, saved.position.z);
         iw.group.rotation.y = saved.rotationY||0;
         iw.length = saved.length; iw.thickness = saved.thickness; iw.height = saved.height;
+        iw.locked = !!saved.locked;
         rebuildIslandWallGeometry(iw);
       });
       updateArtworkListUI();
@@ -2096,7 +2098,8 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         return {
           position: { x:iw.group.position.x, z:iw.group.position.z },
           rotationY: iw.group.rotation.y,
-          length: iw.length, thickness: iw.thickness, height: iw.height
+          length: iw.length, thickness: iw.thickness, height: iw.height,
+          locked: iw.locked
         };
       })
     };
@@ -2200,6 +2203,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         iw.group.position.set(saved.position.x, ISLAND_WALL_LIFT, saved.position.z);
         iw.group.rotation.y = saved.rotationY||0;
         iw.length = saved.length; iw.thickness = saved.thickness; iw.height = saved.height;
+        iw.locked = !!saved.locked;
         rebuildIslandWallGeometry(iw);
       });
       updateArtworkListUI();
