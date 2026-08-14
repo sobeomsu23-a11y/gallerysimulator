@@ -293,8 +293,17 @@
       <label class="field-label">회전</label>
       <input type="range" id="iw-rotate-slider" min="-180" max="180" value="0" step="1">
       <div class="slider-val"><span id="iw-rotate-val">0</span>°</div>
+
+      <div class="toggle-row" style="margin-top:14px;">
+        <span class="tlabel">위치 고정</span>
+        <label class="switch">
+          <input type="checkbox" id="iw-lock-toggle">
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div class="hint">켜두면 이 벽은 드래그해도 움직이지 않습니다.</div>
+
       <button class="btn btn-danger" id="btn-delete-island-wall" style="margin-top:14px;">이 벽 삭제</button>
-    </div>
 
     <div class="panel-section hidden" id="selected-panel">
       <div class="sec-label"><span class="num">6</span>선택한 그림 — <span id="sel-name" style="color:var(--ink);text-transform:none;letter-spacing:0;"></span></div>
@@ -524,6 +533,7 @@
   var stepIslandWalls = $('step-island-walls'), btnAddIslandWall = $('btn-add-island-wall'), islandWallList = $('island-wall-list');
 var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThickness = $('iw-thickness'), iwHeight = $('iw-height');
   var iwRotateSlider = $('iw-rotate-slider'), iwRotateVal = $('iw-rotate-val');
+  var iwLockToggle = $('iw-lock-toggle');
   var btnDeleteIslandWall = $('btn-delete-island-wall');
   var btnToggleIslandDraw = $('btn-toggle-island-draw'), islandSegmentList = $('island-segment-list');
   var btnToggleOpeningDraw = $('btn-toggle-opening-draw');
@@ -1310,7 +1320,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       if(iwHits.length){
         var iwObj = iwHits[0].object;
         var hitIw = islandWalls.filter(function(x){return x.boxMesh===iwObj;})[0];
-        if(hitIw){ selectIslandWall(hitIw); startDragIslandWall(hitIw); return; }
+        if(hitIw){ selectIslandWall(hitIw); if(!hitIw.locked){ startDragIslandWall(hitIw); } return; }
       }
 
       orbiting = true;
@@ -2275,7 +2285,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     var iw = {
       id:'iwall'+(islandWallCount++),
       group:group, boxMesh:boxMesh, frontPlane:frontPlane, backPlane:backPlane,
-      length:2, thickness:0.12, height:ceilingHeight,
+      length:2, thickness:0.12, height:ceilingHeight, locked:false,
       frontEntry:{ mesh:frontPlane, p1:null, p2:null, inward:null, dir:null, length:2 },
       backEntry:{ mesh:backPlane, p1:null, p2:null, inward:null, dir:null, length:2 }
     };
@@ -2308,7 +2318,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     var iw = {
       id:'iwall'+(islandWallCount++),
       group:group, boxMesh:boxMesh, frontPlane:frontPlane, backPlane:backPlane,
-      length:length, thickness:thicknessMeters, height:ceilingHeight,
+      length:length, thickness:thicknessMeters, height:ceilingHeight, locked:false,
       frontEntry:{ mesh:frontPlane, p1:null,p2:null,inward:null,dir:null,length:length },
       backEntry:{ mesh:backPlane, p1:null,p2:null,inward:null,dir:null,length:length }
     };
@@ -2330,6 +2340,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     var deg = THREE.MathUtils.radToDeg(iw.group.rotation.y);
     iwRotateSlider.value = deg.toFixed(0);
     iwRotateVal.textContent = deg.toFixed(0);
+    iwLockToggle.checked = !!iw.locked;
     updateIslandWallListUI();
   }
 
@@ -2383,8 +2394,13 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     selectedIslandWall.height = Math.max(0.3, parseFloat(iwHeight.value)||ceilingHeight);
     rebuildIslandWallGeometry(selectedIslandWall);
   });
-  iwRotateSlider.addEventListener('input', function(){
+  iwLockToggle.addEventListener('change', function(){
     if(!selectedIslandWall) return;
+    selectedIslandWall.locked = iwLockToggle.checked;
+    pushHistory();
+  });
+
+  iwRotateSlider.addEventListener('input', function(){
     var deg = parseFloat(iwRotateSlider.value)||0;
     iwRotateVal.textContent = deg;
     selectedIslandWall.group.rotation.y = THREE.MathUtils.degToRad(deg);
