@@ -1172,7 +1172,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     shape.closePath();
     var floorGeo = new THREE.ShapeGeometry(shape);
     floorGeo.rotateX(Math.PI/2);
-    var floorMat = new THREE.MeshStandardMaterial({ color:0xcfcac0, side:THREE.DoubleSide, roughness:0.9 });
+    var floorMat = new THREE.MeshStandardMaterial({ color:0xb7b0a2, side:THREE.DoubleSide, roughness:0.9 });
     floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.userData.isFloor = true;
     scene.add(floorMesh);
@@ -1247,11 +1247,11 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     if(THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
     threeContainerHolder.appendChild(renderer.domElement);
 
-    var hemi = new THREE.HemisphereLight(0xffffff, 0x555044, 0.9);
-    scene.add(hemi);
-    var dir1 = new THREE.DirectionalLight(0xffffff, 0.65); dir1.position.set(6,10,4); scene.add(dir1);
-    var dir2 = new THREE.DirectionalLight(0xffffff, 0.35); dir2.position.set(-6,6,-4); scene.add(dir2);
-    var amb = new THREE.AmbientLight(0xffffff, 0.25); scene.add(amb);
+    var hemi = new THREE.HemisphereLight(0xffffff, 0x555044, 0.55);
+scene.add(hemi);
+var dir1 = new THREE.DirectionalLight(0xffffff, 0.9); dir1.position.set(6,10,4); scene.add(dir1);
+var dir2 = new THREE.DirectionalLight(0xffffff, 0.45); dir2.position.set(-6,6,-4); scene.add(dir2);
+var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
     attachInteraction();
     window.addEventListener('resize', onResize);
