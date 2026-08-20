@@ -186,6 +186,16 @@
       <input type="file" id="scene-file-input" accept="application/json,.json">
     </div>
 
+    <div class="panel-section">
+      <button class="btn" id="btn-drive-toggle">프리셋 (구글 드라이브)</button>
+      <div id="drive-preset-panel" style="display:none;margin-top:10px;">
+        <div class="btn-row">
+          <button class="btn" id="btn-drive-refresh">목록 새로고침</button>
+        </div>
+        <div id="drive-preset-list" class="hint">불러오는 중…</div>
+      </div>
+    </div>
+
     <div class="panel-section" id="step1">
       <div class="sec-label"><span class="num">1</span>평면도 업로드 &amp; 바닥 그리기</div>
 
@@ -528,6 +538,14 @@
   var distHud = $('dist-hud'), hudBottom = $('hud-bottom'), hudCenter = $('hud-center'), hudTop = $('hud-top');
   var btnScreenshot = $('btn-screenshot'), btnRestart = $('btn-restart');
   var btnSaveScene = $('btn-save-scene'), btnLoadScene = $('btn-load-scene'), sceneFileInput = $('scene-file-input');
+
+  // ====== 구글 드라이브 프리셋 설정 ======
+  // 이전 안내드린 1~5단계에서 발급받은 값을 여기에 넣어주세요.
+  var DRIVE_API_KEY = 'AIzaSyDpsSV1XcRpfz6GNo-8OJyXsd21W2u0p8Q';
+  var DRIVE_FOLDER_ID = '1O5To5hosr7hgTrN00_qcqBuPurobkPlR';
+
+  var btnDriveToggle = $('btn-drive-toggle'), drivePresetPanel = $('drive-preset-panel');
+  var btnDriveRefresh = $('btn-drive-refresh'), drivePresetList = $('drive-preset-list');
   var screenshotFlash = $('screenshot-flash');
   var btnAddMale = $('btn-add-male'), btnAddFemale = $('btn-add-female'), btnAddChild = $('btn-add-child');
   var figureList = $('figure-list');
@@ -2133,6 +2151,78 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     reader.readAsText(file);
     sceneFileInput.value = '';
   });
+
+  function fmtDriveDate(iso){
+    var d = new Date(iso);
+    return d.getFullYear()+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+String(d.getDate()).padStart(2,'0');
+  }
+
+  var driveListLoadedOnce = false;
+
+  function refreshDrivePresetList(){
+    if(DRIVE_API_KEY === 'YOUR_API_KEY_HERE' || DRIVE_FOLDER_ID === 'YOUR_FOLDER_ID_HERE'){
+      drivePresetList.textContent = 'DRIVE_API_KEY / DRIVE_FOLDER_ID를 먼저 설정해주세요.';
+      return;
+    }
+    drivePresetList.textContent = '불러오는 중…';
+    var q = encodeURIComponent("'"+DRIVE_FOLDER_ID+"' in parents and trashed = false");
+    var url = 'https://www.googleapis.com/drive/v3/files?q='+q
+      + '&orderBy=modifiedTime desc'
+      + '&fields=files(id,name,modifiedTime)'
+      + '&key='+DRIVE_API_KEY;
+
+    fetch(url).then(function(res){
+      if(!res.ok) throw new Error('drive list failed: '+res.status);
+      return res.json();
+    }).then(function(json){
+      var files = (json.files||[]).filter(function(f){ return /\.json$/i.test(f.name); });
+      drivePresetList.innerHTML = '';
+      if(!files.length){
+        drivePresetList.textContent = '폴더에 저장된 프리셋(.json)이 없습니다.';
+        return;
+      }
+      files.forEach(function(f){
+        var item = document.createElement('div');
+        item.className = 'art-item';
+        var nm = document.createElement('div');
+        nm.className = 'art-name';
+        nm.textContent = f.name + ' · ' + fmtDriveDate(f.modifiedTime);
+        item.appendChild(nm);
+        item.addEventListener('click', function(){ loadPresetFromDrive(f.id, f.name); });
+        drivePresetList.appendChild(item);
+      });
+    }).catch(function(err){
+      drivePresetList.textContent = '목록을 불러오지 못했습니다. API 키/폴더 공유 설정을 확인해주세요.';
+      console.error(err);
+    });
+  }
+
+  function loadPresetFromDrive(fileId, name){
+    drivePresetList.textContent = name + ' 불러오는 중…';
+    var url = 'https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media&key='+DRIVE_API_KEY;
+    fetch(url).then(function(res){
+      if(!res.ok) throw new Error('drive file fetch failed: '+res.status);
+      return res.json();
+    }).then(function(data){
+      loadSceneFromData(data);
+      refreshDrivePresetList();
+    }).catch(function(err){
+      alert('프리셋을 불러오지 못했습니다.');
+      console.error(err);
+      refreshDrivePresetList();
+    });
+  }
+
+  btnDriveToggle.addEventListener('click', function(){
+    var willShow = drivePresetPanel.style.display === 'none';
+    drivePresetPanel.style.display = willShow ? 'block' : 'none';
+    if(willShow && !driveListLoadedOnce){
+      driveListLoadedOnce = true;
+      refreshDrivePresetList();
+    }
+  });
+
+  btnDriveRefresh.addEventListener('click', refreshDrivePresetList);
 
   function loadSceneFromData(data){
     if(!data || !data.room || !data.room.points){ alert('파일 형식이 올바르지 않습니다.'); return; }
