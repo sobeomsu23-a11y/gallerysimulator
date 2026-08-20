@@ -215,7 +215,8 @@
         도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다.
       </div>
 
-      <div class="btn-row" id="trace-controls" style="display:none;">
+            <div class="btn-row" id="trace-controls" style="display:none;">
+        <button class="btn" id="btn-fp-undo" disabled>되돌리기</button>
         <button class="btn" id="btn-reset-points">점 초기화</button>
         <button class="btn btn-primary" id="btn-finish-poly" disabled>도형 완성</button>
       </div>
@@ -498,7 +499,37 @@
   var $ = function(id){ return document.getElementById(id); };
   var fpUploadBtn = $('fp-upload-btn'), fpFileInput = $('fp-file-input');
   var fpCanvasWrap = $('fp-canvas-wrap'), fpCanvas = $('fp-canvas'), fpEmpty = $('fp-empty');
-  var traceHint = $('trace-hint'), traceControls = $('trace-controls');
+    var traceHint = $('trace-hint'), traceControls = $('trace-controls');
+  var btnFpUndo = $('btn-fp-undo');
+  var fpUndoStack = [];
+  var fpDragSnapshotTaken = false;
+
+  function fpPushUndo(){
+    fpUndoStack.push({
+      points: points.map(function(p){ return {x:p.x, y:p.y}; }),
+      polyClosed: polyClosed,
+      openEdges: Object.assign({}, openEdges)
+    });
+    if(fpUndoStack.length > 50) fpUndoStack.shift();
+    btnFpUndo.disabled = false;
+  }
+
+  function fpUndo(){
+    if(!fpUndoStack.length) return;
+    var prev = fpUndoStack.pop();
+    points = prev.points;
+    polyClosed = prev.polyClosed;
+    openEdges = prev.openEdges;
+    btnFinishPoly.disabled = polyClosed || points.length < 3;
+    scaleInputs.style.display = polyClosed ? 'block' : 'none';
+    traceHint.textContent = polyClosed
+      ? '점을 드래그하면 위치를 세밀하게 조정할 수 있습니다. 점을 더블클릭하면 삭제됩니다. 조정이 끝나면 아래에서 실제 크기를 입력하세요.'
+      : '도면 위 바닥 모서리를 순서대로 클릭해 다각형을 그려주세요. 점을 드래그하면 위치를 조정할 수 있고, 첫 점 근처를 클릭하면 도형이 닫힙니다. 점을 더블클릭하면 삭제됩니다.';
+    btnFpUndo.disabled = fpUndoStack.length === 0;
+    redrawFp();
+  }
+
+  btnFpUndo.addEventListener('click', fpUndo);
   var autoDetectRow = $('auto-detect-row'), btnAutoDetect = $('btn-auto-detect'), wallThicknessInput = $('wall-thickness-px');
   var btnResetPoints = $('btn-reset-points'), btnFinishPoly = $('btn-finish-poly');
   var scaleInputs = $('scale-inputs'), realWidthInput = $('real-width'), ceilingHeightInput = $('ceiling-height');
@@ -723,8 +754,9 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     }
     var rect = fpCanvas.getBoundingClientRect();
     var x = e.clientX - rect.left, y = e.clientY - rect.top;
-    pressStart = {x:x,y:y};
+        pressStart = {x:x,y:y};
     didDragPoint = false;
+    fpDragSnapshotTaken = false;
     activePointIdx = findNearestPointIdx(x,y,10);
   });
 
@@ -745,7 +777,8 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         var d = Math.hypot(x-pressStart.x, y-pressStart.y);
         if(d > 4) didDragPoint = true;
       }
-      if(didDragPoint){
+            if(didDragPoint){
+        if(!fpDragSnapshotTaken){ fpPushUndo(); fpDragSnapshotTaken = true; }
         points[activePointIdx] = {x:x, y:y};
         redrawFp();
       }
@@ -763,6 +796,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         if(activePointIdx === 0 && points.length >= 3){
           finishPolygon();
         } else if(activePointIdx === -1){
+          fpPushUndo();
           points.push({x:x, y:y});
           btnFinishPoly.disabled = points.length < 3;
           redrawFp();
@@ -783,6 +817,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       alert('점이 3개 미만이 되면 도형을 만들 수 없어요. 최소 3개는 남겨두어야 합니다.');
       return;
     }
+    fpPushUndo();
     points.splice(idx, 1);
     openEdges = {};
     if(!polyClosed){
@@ -850,6 +885,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
   function finishPolygon(){
     if(points.length < 3) return;
+    fpPushUndo();
     polyClosed = true;
     traceHint.textContent = '점을 드래그하면 위치를 세밀하게 조정할 수 있습니다. 점을 더블클릭하면 삭제됩니다. 조정이 끝나면 아래에서 실제 크기를 입력하세요.';
     redrawFp();
@@ -2662,7 +2698,13 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var key = e.key ? e.key.toLowerCase() : '';
     if((e.ctrlKey || e.metaKey) && key==='z'){
       e.preventDefault();
-      if(e.shiftKey) performRedo(); else performUndo();
+      if(!floorplanStage.classList.contains('hidden')){
+        fpUndo();
+      } else if(e.shiftKey){
+        performRedo();
+      } else {
+        performUndo();
+      }
     } else if((e.ctrlKey || e.metaKey) && key==='y'){
       e.preventDefault();
       performRedo();
