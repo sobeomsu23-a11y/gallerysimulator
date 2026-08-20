@@ -1655,7 +1655,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     figures.slice().forEach(function(f){ scene.remove(f.sprite); });
     islandWalls.slice().forEach(function(iw){
       scene.remove(iw.group);
-      walls = walls.filter(function(w){ return w!==iw.frontEntry && w!==iw.backEntry; });
+      walls = walls.filter(function(w){ return w!==iw.frontEntry && w!==iw.backEntry && w!==iw.leftEntry && w!==iw.rightEntry; });
     });
     artworks = []; figures = []; islandWalls = [];
     selected = null; selectedIslandWall = null; multiSelectedArtworks = [];
@@ -2392,6 +2392,23 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     iw.backEntry.inward = dirWorld(0,-1);
     iw.backEntry.dir = dirWorld(-1,0);
     iw.backEntry.length = iw.length;
+
+    var halfT = iw.thickness/2;
+    var l1 = computeIslandWallLocal(iw, -halfL, -halfT);
+    var l2 = computeIslandWallLocal(iw, -halfL, halfT);
+    iw.leftEntry.p1 = new THREE.Vector3(l1.x, 0, l1.z);
+    iw.leftEntry.p2 = new THREE.Vector3(l2.x, 0, l2.z);
+    iw.leftEntry.inward = dirWorld(-1,0);
+    iw.leftEntry.dir = dirWorld(0,1);
+    iw.leftEntry.length = iw.thickness;
+
+    var r1 = computeIslandWallLocal(iw, halfL, halfT);
+    var r2 = computeIslandWallLocal(iw, halfL, -halfT);
+    iw.rightEntry.p1 = new THREE.Vector3(r1.x, 0, r1.z);
+    iw.rightEntry.p2 = new THREE.Vector3(r2.x, 0, r2.z);
+    iw.rightEntry.inward = dirWorld(1,0);
+    iw.rightEntry.dir = dirWorld(0,-1);
+    iw.rightEntry.length = iw.thickness;
   }
 
   function rebuildIslandWallGeometry(iw){
@@ -2411,6 +2428,14 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     iw.backPlane.geometry.dispose();
     iw.backPlane.geometry = new THREE.PlaneGeometry(iw.length, iw.height);
     iw.backPlane.position.set(0, iw.height/2, -iw.thickness/2 - 0.003);
+
+    iw.leftPlane.geometry.dispose();
+    iw.leftPlane.geometry = new THREE.PlaneGeometry(iw.thickness, iw.height);
+    iw.leftPlane.position.set(-iw.length/2 - 0.003, iw.height/2, 0);
+
+    iw.rightPlane.geometry.dispose();
+    iw.rightPlane.geometry = new THREE.PlaneGeometry(iw.thickness, iw.height);
+    iw.rightPlane.position.set(iw.length/2 + 0.003, iw.height/2, 0);
 
     updateIslandWallTransformData(iw);
   }
@@ -2432,17 +2457,28 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     backPlane.rotation.y = Math.PI;
     group.add(backPlane);
 
+    var leftPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
+    leftPlane.rotation.y = -Math.PI/2;
+    group.add(leftPlane);
+
+    var rightPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
+    rightPlane.rotation.y = Math.PI/2;
+    group.add(rightPlane);
+
     scene.add(group);
 
     var iw = {
       id:'iwall'+(islandWallCount++),
       group:group, boxMesh:boxMesh, frontPlane:frontPlane, backPlane:backPlane,
+      leftPlane:leftPlane, rightPlane:rightPlane,
       length:2, thickness:0.12, height:ceilingHeight, locked:false,
       frontEntry:{ mesh:frontPlane, p1:null, p2:null, inward:null, dir:null, length:2 },
-      backEntry:{ mesh:backPlane, p1:null, p2:null, inward:null, dir:null, length:2 }
+      backEntry:{ mesh:backPlane, p1:null, p2:null, inward:null, dir:null, length:2 },
+      leftEntry:{ mesh:leftPlane, p1:null, p2:null, inward:null, dir:null, length:0.12 },
+      rightEntry:{ mesh:rightPlane, p1:null, p2:null, inward:null, dir:null, length:0.12 }
     };
     rebuildIslandWallGeometry(iw);
-    walls.push(iw.frontEntry, iw.backEntry);
+    walls.push(iw.frontEntry, iw.backEntry, iw.leftEntry, iw.rightEntry);
     islandWalls.push(iw);
     updateIslandWallListUI();
     selectIslandWall(iw);
@@ -2465,17 +2501,29 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var backPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
     backPlane.rotation.y = Math.PI;
     group.add(backPlane);
+
+    var leftPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
+    leftPlane.rotation.y = -Math.PI/2;
+    group.add(leftPlane);
+
+    var rightPlane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), islandWallMat);
+    rightPlane.rotation.y = Math.PI/2;
+    group.add(rightPlane);
+
     scene.add(group);
 
     var iw = {
       id:'iwall'+(islandWallCount++),
       group:group, boxMesh:boxMesh, frontPlane:frontPlane, backPlane:backPlane,
+      leftPlane:leftPlane, rightPlane:rightPlane,
       length:length, thickness:thicknessMeters, height:ceilingHeight, locked:false,
       frontEntry:{ mesh:frontPlane, p1:null,p2:null,inward:null,dir:null,length:length },
-      backEntry:{ mesh:backPlane, p1:null,p2:null,inward:null,dir:null,length:length }
+      backEntry:{ mesh:backPlane, p1:null,p2:null,inward:null,dir:null,length:length },
+      leftEntry:{ mesh:leftPlane, p1:null,p2:null,inward:null,dir:null,length:thicknessMeters },
+      rightEntry:{ mesh:rightPlane, p1:null,p2:null,inward:null,dir:null,length:thicknessMeters }
     };
     rebuildIslandWallGeometry(iw);
-    walls.push(iw.frontEntry, iw.backEntry);
+    walls.push(iw.frontEntry, iw.backEntry, iw.leftEntry, iw.rightEntry);
     islandWalls.push(iw);
     return iw;
   }
@@ -2498,7 +2546,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   function deleteIslandWall(iw){
     scene.remove(iw.group);
-    walls = walls.filter(function(w){ return w!==iw.frontEntry && w!==iw.backEntry; });
+    walls = walls.filter(function(w){ return w!==iw.frontEntry && w!==iw.backEntry && w!==iw.leftEntry && w!==iw.rightEntry; });
     islandWalls = islandWalls.filter(function(x){return x!==iw;});
     if(selectedIslandWall===iw){
       selectedIslandWall = null;
