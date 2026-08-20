@@ -169,6 +169,40 @@
   ::-webkit-scrollbar{width:8px;height:8px;}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
   ::-webkit-scrollbar-track{background:transparent;}
+
+  /* ---- 아코디언(접기/펼치기) ---- */
+  .panel-section .sec-label{cursor:pointer;user-select:none;margin-bottom:0;}
+  .panel-section .sec-label:hover{color:var(--ink);}
+  .panel-section .sec-label .chev{margin-left:auto;font-size:9px;color:var(--ink-dim);transition:transform .15s;flex:none;}
+  .panel-section.collapsed .sec-label .chev{transform:rotate(-90deg);}
+  .panel-section .panel-body{margin-top:14px;}
+  .panel-section.collapsed .panel-body{display:none;}
+
+  /* ---- 부가 설정을 묶는 서브 카드 ---- */
+  .sub-card{border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-top:14px;background:rgba(255,255,255,0.02);}
+  .sub-card > .field-label:first-child{margin-top:0;}
+  .sub-card-title{font-size:11px;color:var(--ink-dim);letter-spacing:.06em;margin-bottom:10px;text-transform:uppercase;}
+  .sub-card + .sub-card{margin-top:10px;}
+
+  /* ---- 고급 설정(details) ---- */
+  details.adv{margin-top:10px;}
+  details.adv > summary{cursor:pointer;font-size:11.5px;color:var(--ink-dim);list-style:none;padding:2px 0;display:flex;align-items:center;gap:4px;}
+  details.adv > summary::-webkit-details-marker{display:none;}
+  details.adv > summary::before{content:"▸";color:var(--accent);font-size:9px;}
+  details.adv[open] > summary::before{content:"▾";}
+  details.adv > summary:hover{color:var(--ink);}
+  details.adv > .adv-body{margin-top:10px;}
+
+  /* ---- 선택 항목 인스펙터(그림/가벽) 패널 강조 ---- */
+  #selected-panel, #island-wall-panel{border-left:2px solid var(--accent);background:var(--panel-2);}
+
+  /* ---- 뷰포트 조작 힌트 바 접기 ---- */
+  .viewport-hud{padding-right:28px;}
+  .viewport-hud .hud-close{position:absolute;top:5px;right:6px;background:none;border:none;color:var(--ink-dim);
+    cursor:pointer;font-size:13px;line-height:1;pointer-events:auto;padding:3px 5px;}
+  .viewport-hud .hud-close:hover{color:var(--ink);}
+  .viewport-hud.hud-collapsed{padding:8px 10px;}
+  .viewport-hud.hud-collapsed .hud-text{display:none;}
 </style>
 </head>
 <body>
@@ -197,8 +231,9 @@
     </div>
 
     <div class="panel-section" id="step1">
-      <div class="sec-label"><span class="num">1</span>평면도 업로드 &amp; 바닥 그리기</div>
+      <div class="sec-label"><span class="num">1</span>평면도 업로드 &amp; 바닥 그리기<span class="chev">▾</span></div>
 
+      <div class="panel-body">
       <div class="upload-drop" id="fp-upload-btn">
         평면 도면 이미지를 선택하세요<br><span style="opacity:.7">(JPG / PNG)</span>
       </div>
@@ -214,10 +249,15 @@
       <div class="hint">켜두면 바닥 도형과 가벽 선을 그릴 때 이전 점 기준으로 가로 또는 세로로만 그어집니다.</div>
 
       <div id="auto-detect-row" style="display:none;">
-        <label class="field-label">벽 인식 두께 기준 (px)</label>
-        <input type="number" id="wall-thickness-px" value="4" min="1" max="14" step="1">
-        <div class="hint" style="margin-top:6px;">이 값보다 얇은 선(치수선·해칭·글자)은 무시하고, 이보다 두꺼운 벽 선만 벽으로 인식합니다. 결과가 이상하면 값을 올리거나 내려 다시 시도해보세요.</div>
         <button class="btn" id="btn-auto-detect" style="margin-top:10px;">자동으로 바닥 모양 인식</button>
+        <details class="adv">
+          <summary>고급: 벽 인식 두께 기준 조정</summary>
+          <div class="adv-body">
+            <label class="field-label">벽 인식 두께 기준 (px)</label>
+            <input type="number" id="wall-thickness-px" value="4" min="1" max="14" step="1">
+            <div class="hint" style="margin-top:6px;">이 값보다 얇은 선(치수선·해칭·글자)은 무시하고, 이보다 두꺼운 벽 선만 벽으로 인식합니다. 결과가 이상하면 값을 올리거나 내려 다시 시도해보세요.</div>
+          </div>
+        </details>
       </div>
 
       <div class="hint" id="trace-hint" style="display:none;">
@@ -237,21 +277,27 @@
         <input type="number" id="ceiling-height" value="3" step="0.1" min="1.5">
         <div class="hint">도면에 표기된 실측 수치를 확인해 입력하거나, 원하는 값으로 직접 설정하세요.</div>
 
-        <label class="field-label">가벽 (선택 사항)</label>
-        <button class="btn" id="btn-toggle-island-draw">가벽 그리기</button>
-        <div class="hint">도면 안쪽에서 두 점을 순서대로 클릭하면 독립된 벽 선이 하나 그려져요. 여러 개 그릴 수 있고, 3D 공간을 생성하면 실제 벽으로 만들어집니다.</div>
-        <div id="island-segment-list"></div>
+        <div class="sub-card">
+          <div class="sub-card-title">가벽 (선택 사항)</div>
+          <button class="btn" id="btn-toggle-island-draw">가벽 그리기</button>
+          <div class="hint">도면 안쪽에서 두 점을 순서대로 클릭하면 독립된 벽 선이 하나 그려져요. 여러 개 그릴 수 있고, 3D 공간을 생성하면 실제 벽으로 만들어집니다.</div>
+          <div id="island-segment-list"></div>
+        </div>
 
-        <label class="field-label">문/창문으로 뚫린 벽 (선택 사항)</label>
-        <button class="btn" id="btn-toggle-opening-draw">뚫린 벽 표시하기</button>
-        <div class="hint">표시 모드를 켠 뒤 벽 선을 클릭하면 그 구간이 문·창문처럼 뚫린 벽(점선)으로 바뀌어요. 다시 클릭하면 원래대로 막힌 벽이 됩니다. 3D 공간에서는 이 구간에 벽이 세워지지 않습니다.</div>
+        <div class="sub-card">
+          <div class="sub-card-title">문/창문으로 뚫린 벽 (선택 사항)</div>
+          <button class="btn" id="btn-toggle-opening-draw">뚫린 벽 표시하기</button>
+          <div class="hint">표시 모드를 켠 뒤 벽 선을 클릭하면 그 구간이 문·창문처럼 뚫린 벽(점선)으로 바뀌어요. 다시 클릭하면 원래대로 막힌 벽이 됩니다. 3D 공간에서는 이 구간에 벽이 세워지지 않습니다.</div>
+        </div>
 
         <button class="btn btn-primary" id="btn-build-3d" style="margin-top:14px;">3D 공간 생성</button>
+      </div>
       </div>
     </div>
 
     <div class="panel-section hidden" id="step2">
-      <div class="sec-label"><span class="num">2</span>그림 추가</div>
+      <div class="sec-label"><span class="num">2</span>그림 추가<span class="chev">▾</span></div>
+      <div class="panel-body">
       <div class="upload-drop" id="art-upload-btn">그림 이미지 추가하기</div>
       <input type="file" id="art-file-input" accept="image/*" multiple>
       <div class="hint">추가할 때마다 실제 크기(cm)를 입력하는 창이 열립니다.</div>
@@ -261,74 +307,13 @@
         <button class="btn" id="btn-group-art" disabled>그룹으로 묶기</button>
         <button class="btn" id="btn-ungroup-art" disabled>그룹 해제</button>
       </div>
-    </div>
-
-    <div class="panel-section hidden" id="step3">
-      <div class="sec-label"><span class="num">3</span>배치 옵션</div>
-      <div class="toggle-row">
-        <span class="tlabel">벽에 자석처럼 붙이기</span>
-        <label class="switch">
-          <input type="checkbox" id="snap-toggle" checked>
-          <span class="slider-tg"></span>
-        </label>
       </div>
-      <div class="hint">켜두면 그림을 드래그할 때 가장 가까운 벽면에 자동으로 달라붙습니다. 끄면 공간 안 어디든 자유롭게 옮길 수 있어요.</div>
-    </div>
-
-    <div class="panel-section hidden" id="step-figures">
-      <div class="sec-label"><span class="num">4</span>인체 모형 추가</div>
-      <div class="btn-row">
-        <button class="btn" id="btn-add-male">성인 남성</button>
-        <button class="btn" id="btn-add-female">성인 여성</button>
-      </div>
-      <div class="btn-row">
-        <button class="btn" id="btn-add-child">어린이</button>
-      </div>
-      <div class="hint">평균 신장 참고용 모형입니다 (성인 남성 약 172cm · 성인 여성 약 160cm · 어린이 약 115cm, 6~7세 기준). 3D 공간에서 클릭 후 드래그하면 바닥 위에서 자유롭게 옮길 수 있어요.</div>
-      <div id="figure-list"></div>
-    </div>
-
-    <div class="panel-section hidden" id="step-island-walls">
-      <div class="sec-label"><span class="num">5</span>가벽 추가</div>
-      <button class="btn" id="btn-add-island-wall">가벽 추가</button>
-      <div class="hint">공간 한가운데 세울 수 있는 독립된 벽이에요. 벽 몸체를 클릭한 뒤 드래그하면 바닥 위에서 옮길 수 있고, 양면 모두에 그림을 걸 수 있어요.</div>
-      <div id="island-wall-list"></div>
-    </div>
-
-    <div class="panel-section hidden" id="island-wall-panel">
-      <div class="sec-label">선택한 가벽</div>
-      <div class="size-grid">
-        <div>
-          <label class="field-label">길이 (m)</label>
-          <input type="number" id="iw-length" min="0.3" step="0.1">
-        </div>
-        <div>
-          <label class="field-label">두께 (m)</label>
-          <input type="number" id="iw-thickness" min="0.02" step="0.01">
-        </div>
-      </div>
-      <label class="field-label">높이 (m)</label>
-      <input type="number" id="iw-height" min="0.3" step="0.1">
-
-      <label class="field-label">회전</label>
-      <input type="range" id="iw-rotate-slider" min="-180" max="180" value="0" step="1">
-      <div class="slider-val"><span id="iw-rotate-val">0</span>°</div>
-
-      <div class="toggle-row" style="margin-top:14px;">
-        <span class="tlabel">위치 고정</span>
-        <label class="switch">
-          <input type="checkbox" id="iw-lock-toggle">
-          <span class="slider-tg"></span>
-        </label>
-      </div>
-      <div class="hint">켜두면 이 벽은 드래그해도 움직이지 않습니다.</div>
-
-      <button class="btn btn-danger" id="btn-delete-island-wall" style="margin-top:14px;">이 벽 삭제</button>
     </div>
 
     <div class="panel-section hidden" id="selected-panel">
-      <div class="sec-label"><span class="num">6</span>선택한 그림 — <span id="sel-name" style="color:var(--ink);text-transform:none;letter-spacing:0;"></span></div>
+      <div class="sec-label">선택한 그림 — <span id="sel-name" style="color:var(--ink);text-transform:none;letter-spacing:0;"></span><span class="chev">▾</span></div>
 
+      <div class="panel-body">
       <div class="size-grid">
         <div>
           <label class="field-label">가로 (cm)</label>
@@ -382,6 +367,78 @@
       <div class="dist-row"><span>윗변</span><span class="v" id="dist-top">–</span></div>
 
       <button class="btn btn-danger" id="btn-delete-art" style="margin-top:14px;">이 그림 삭제</button>
+      </div>
+    </div>
+
+    <div class="panel-section hidden" id="step3">
+      <div class="sec-label"><span class="num">3</span>배치 옵션<span class="chev">▾</span></div>
+      <div class="panel-body">
+      <div class="toggle-row">
+        <span class="tlabel">벽에 자석처럼 붙이기</span>
+        <label class="switch">
+          <input type="checkbox" id="snap-toggle" checked>
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div class="hint">켜두면 그림을 드래그할 때 가장 가까운 벽면에 자동으로 달라붙습니다. 끄면 공간 안 어디든 자유롭게 옮길 수 있어요.</div>
+      </div>
+    </div>
+
+    <div class="panel-section hidden" id="step-figures">
+      <div class="sec-label"><span class="num">4</span>인체 모형 추가<span class="chev">▾</span></div>
+      <div class="panel-body">
+      <div class="btn-row">
+        <button class="btn" id="btn-add-male">성인 남성</button>
+        <button class="btn" id="btn-add-female">성인 여성</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="btn-add-child">어린이</button>
+      </div>
+      <div class="hint">평균 신장 참고용 모형입니다 (성인 남성 약 172cm · 성인 여성 약 160cm · 어린이 약 115cm, 6~7세 기준). 3D 공간에서 클릭 후 드래그하면 바닥 위에서 자유롭게 옮길 수 있어요.</div>
+      <div id="figure-list"></div>
+      </div>
+    </div>
+
+    <div class="panel-section hidden" id="step-island-walls">
+      <div class="sec-label"><span class="num">5</span>가벽 추가<span class="chev">▾</span></div>
+      <div class="panel-body">
+      <button class="btn" id="btn-add-island-wall">가벽 추가</button>
+      <div class="hint">공간 한가운데 세울 수 있는 독립된 벽이에요. 벽 몸체를 클릭한 뒤 드래그하면 바닥 위에서 옮길 수 있고, 양면 모두에 그림을 걸 수 있어요.</div>
+      <div id="island-wall-list"></div>
+      </div>
+    </div>
+
+    <div class="panel-section hidden" id="island-wall-panel">
+      <div class="sec-label">선택한 가벽<span class="chev">▾</span></div>
+      <div class="panel-body">
+      <div class="size-grid">
+        <div>
+          <label class="field-label">길이 (m)</label>
+          <input type="number" id="iw-length" min="0.3" step="0.1">
+        </div>
+        <div>
+          <label class="field-label">두께 (m)</label>
+          <input type="number" id="iw-thickness" min="0.02" step="0.01">
+        </div>
+      </div>
+      <label class="field-label">높이 (m)</label>
+      <input type="number" id="iw-height" min="0.3" step="0.1">
+
+      <label class="field-label">회전</label>
+      <input type="range" id="iw-rotate-slider" min="-180" max="180" value="0" step="1">
+      <div class="slider-val"><span id="iw-rotate-val">0</span>°</div>
+
+      <div class="toggle-row" style="margin-top:14px;">
+        <span class="tlabel">위치 고정</span>
+        <label class="switch">
+          <input type="checkbox" id="iw-lock-toggle">
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div class="hint">켜두면 이 벽은 드래그해도 움직이지 않습니다.</div>
+
+      <button class="btn btn-danger" id="btn-delete-island-wall" style="margin-top:14px;">이 벽 삭제</button>
+      </div>
     </div>
 
     <div class="footer-actions hidden" id="step-footer">
@@ -405,7 +462,8 @@
     <div id="three-container" class="hidden"></div>
 
     <div class="viewport-hud hidden" id="vp-hud">
-      드래그: <b>시점 회전</b> · Shift+드래그: <b>평행 이동</b> · 휠: <b>확대/축소</b> · 그림/인체모형 클릭 후 드래그: <b>이동</b>
+      <button class="hud-close" id="btn-hud-close" title="숨기기">×</button>
+      <span class="hud-text">드래그: <b>시점 회전</b> · Shift+드래그: <b>평행 이동</b> · 휠: <b>확대/축소</b> · 그림/인체모형 클릭 후 드래그: <b>이동</b></span>
     </div>
 
     <div class="lens-hud hidden" id="lens-hud">
@@ -552,6 +610,7 @@
   var scaleInputs = $('scale-inputs'), realWidthInput = $('real-width'), ceilingHeightInput = $('ceiling-height');
   var btnBuild3d = $('btn-build-3d');
   var step1 = $('step1'), step2 = $('step2'), step3 = $('step3'), stepFigures = $('step-figures'), stepFooter = $('step-footer'), vpHud = $('vp-hud');
+  var btnHudClose = $('btn-hud-close');
   var lensHud = $('lens-hud'), focalLengthSlider = $('focal-length-slider'), focalLengthVal = $('focal-length-val');
 
   // 35mm(풀프레임, 센서 높이 24mm) 환산 초점거리를 THREE.PerspectiveCamera의 수직 fov(도)로 변환합니다.
@@ -2796,6 +2855,28 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   [refBottomBtn, refCenterBtn, refTopBtn].forEach(function(btn){
     btn.addEventListener('click', function(){ pushHistory(); });
   });
+
+  /* =========================================================
+     사이드바 섹션 접기/펼치기 (UI 정리용, 화면 표시 여부와는 무관)
+  ========================================================= */
+  document.querySelectorAll('.panel-section > .sec-label').forEach(function(label){
+    var section = label.parentElement;
+    if(!section.querySelector('.panel-body')) return;
+    label.addEventListener('click', function(e){
+      if(e.target.closest('button, input, a')) return;
+      section.classList.toggle('collapsed');
+    });
+  });
+
+  /* 3D 화면 조작 힌트 바 닫기 */
+  if(btnHudClose){
+    btnHudClose.addEventListener('click', function(e){
+      e.stopPropagation();
+      vpHud.classList.toggle('hud-collapsed');
+      btnHudClose.textContent = vpHud.classList.contains('hud-collapsed') ? '≡' : '×';
+      btnHudClose.title = vpHud.classList.contains('hud-collapsed') ? '조작법 보기' : '숨기기';
+    });
+  }
 
 })();
 </script>
