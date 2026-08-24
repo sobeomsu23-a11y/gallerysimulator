@@ -308,6 +308,22 @@
         <button class="btn" id="btn-group-art" disabled>그룹으로 묶기</button>
         <button class="btn" id="btn-ungroup-art" disabled>그룹 해제</button>
       </div>
+
+      <div class="sub-card" id="spacing-panel" style="display:none;">
+        <div class="sub-card-title">선택한 그림 간격 맞추기</div>
+        <div class="size-grid">
+          <div>
+            <label class="field-label">가로 간격 (cm)</label>
+            <input type="number" id="spacing-h-cm" min="0" step="0.5" value="10">
+          </div>
+          <div>
+            <label class="field-label">세로 간격 (cm)</label>
+            <input type="number" id="spacing-v-cm" min="0" step="0.5" value="10">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-apply-spacing" style="margin-top:10px;">간격 맞춰 정렬</button>
+        <div class="hint">첫 번째로 선택한 그림을 기준으로 나머지를 재배치합니다. 현재 대략적인 가로·세로 배열을 자동으로 인식하므로, 그림 여러 점을 바둑판처럼 러프하게 걸어둔 뒤 한 번에 격자로 맞출 수 있어요.</div>
+      </div>
       </div>
     </div>
 
@@ -634,6 +650,7 @@
   var floorplanStage = $('floorplan-stage'), threeContainerHolder = null;
   var artUploadBtn = $('art-upload-btn'), artFileInput = $('art-file-input'), artworkList = $('artwork-list');
   var btnGroupArt = $('btn-group-art'), btnUngroupArt = $('btn-ungroup-art');
+  var spacingPanel = $('spacing-panel'), spacingHCm = $('spacing-h-cm'), spacingVCm = $('spacing-v-cm'), btnApplySpacing = $('btn-apply-spacing');
   var snapToggle = $('snap-toggle');
   var selectedPanel = $('selected-panel'), selName = $('sel-name');
   var selWcm = $('sel-w-cm'), selHcm = $('sel-h-cm'), selDcm = $('sel-d-cm');
@@ -1994,6 +2011,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   function updateGroupControlsUI(){
     btnGroupArt.disabled = multiSelectedArtworks.length < 2;
     btnUngroupArt.disabled = !(selected && selected.groupId);
+    spacingPanel.style.display = multiSelectedArtworks.length >= 2 ? 'block' : 'none';
   }
 
   function setHeightLockRefUI(ref){
@@ -2057,6 +2075,126 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   btnGroupArt.addEventListener('click', groupSelectedArtworks);
   btnUngroupArt.addEventListener('click', function(){ if(selected) ungroupArtwork(selected); });
+
+  /* =========================================================
+     선택한 그림들의 간격 맞추기 (2점 이상)
+     - 첫 번째로 선택한 그림(multiSelectedArtworks[0])을 기준점으로 고정
+     - 나머지 그림은 현재의 대략적인 가로줄/세로줄 배치를 자동으로 인식해
+       지정한 가로/세로 간격(그림 테두리 기준 여백)에 맞춰 재배치
+  ========================================================= */
+
+  // 값들을 대략적인 그룹(같은 줄/같은 열)으로 묶는다. threshold보다 간격이 벌어지면 새 그룹.
+  function clusterValues1D(values, threshold){
+    var order = values.map(function(v,i){ return i; }).sort(function(a,b){ return values[a]-values[b]; });
+    var clusters = [];
+    var cur = null;
+    order.forEach(function(i){
+      var v = values[i];
+      if(cur===null || v - cur.last > threshold){
+        cur = { indices: [], last: v };
+        clusters.push(cur);
+      }
+      cur.indices.push(i);
+      cur.last = v;
+    });
+    return clusters;
+  }
+
+  // 선택된 그림들에 대해, 가로 위치(u)/세로 위치(v)를 읽고 쓰는 함수 묶음을 만든다.
+  // 모두 둘레 벽(perimeter wall)에 걸려 있으면 벽을 넘나드는 호 길이(arc length)를 가로 좌표로 사용해
+  // 코너를 감싸는 배치도 자연스럽게 처리한다. 그렇지 않으면 월드 좌표(x 또는 z 중 더 넓게 퍼진 축)를 사용한다.
+  function makeSpacingAxes(list){
+    var pw = getPerimeterWalls();
+    var allOnPerimeter = list.every(function(a){ return a.snapped && a.wall && pw.indexOf(a.wall) > -1; });
+
+    if(allOnPerimeter){
+      return {
+        u: function(a){ return arcLengthOnWall(a.wall, a.group.position); },
+        v: function(a){ return a.group.position.y; },
+        setUV: function(a, uVal, vVal){
+          var res = pointAtArcLength(uVal);
+          if(!res) return;
+          var pt = res.point.clone();
+          pt.y = vVal;
+          placeOnWall(a, res.wall, pt);
+        }
+      };
+    }
+
+    var xs = list.map(function(a){ return a.group.position.x; });
+    var zs = list.map(function(a){ return a.group.position.z; });
+    var range = function(arr){ return Math.max.apply(null, arr) - Math.min.apply(null, arr); };
+    var axis = range(xs) >= range(zs) ? 'x' : 'z';
+    return {
+      u: function(a){ return axis==='x' ? a.group.position.x : a.group.position.z; },
+      v: function(a){ return a.group.position.y; },
+      setUV: function(a, uVal, vVal){
+        if(axis==='x') a.group.position.x = uVal; else a.group.position.z = uVal;
+        a.group.position.y = vVal;
+        if(a.snapped && a.wall){
+          placeOnWall(a, a.wall, a.group.position.clone());
+        }
+      }
+    };
+  }
+
+  function arrangeSelectionSpacing(list, hGapM, vGapM){
+    if(list.length < 2) return;
+    var axes = makeSpacingAxes(list);
+
+    var uVals = list.map(axes.u);
+    var vVals = list.map(axes.v);
+    var avgW = list.reduce(function(s,a){ return s+a.w; }, 0) / list.length;
+    var avgH = list.reduce(function(s,a){ return s+a.h; }, 0) / list.length;
+
+    // "러프하게" 배열된 것도 같은 줄/열로 인식하도록 여유 있는 기준(평균 크기의 60%)을 사용
+    var colClusters = clusterValues1D(uVals, Math.max(avgW*0.6, 0.05));
+    var rowClustersAsc = clusterValues1D(vVals, Math.max(avgH*0.6, 0.05));
+    var rowClusters = rowClustersAsc.slice().reverse(); // 위쪽(높은 v)이 0번 줄이 되도록
+
+    var colOf = {}, rowOf = {};
+    colClusters.forEach(function(c, ci){ c.indices.forEach(function(i){ colOf[i] = ci; }); });
+    rowClusters.forEach(function(c, ri){ c.indices.forEach(function(i){ rowOf[i] = ri; }); });
+
+    var colSize = {}, colCount = {}, rowSize = {}, rowCount = {};
+    list.forEach(function(a, i){
+      var c = colOf[i], r = rowOf[i];
+      colSize[c] = (colSize[c]||0) + a.w; colCount[c] = (colCount[c]||0) + 1;
+      rowSize[r] = (rowSize[r]||0) + a.h; rowCount[r] = (rowCount[r]||0) + 1;
+    });
+    Object.keys(colSize).forEach(function(c){ colSize[c] /= colCount[c]; });
+    Object.keys(rowSize).forEach(function(r){ rowSize[r] /= rowCount[r]; });
+
+    var numCols = colClusters.length, numRows = rowClusters.length;
+    var anchorIdx = 0; // multiSelectedArtworks[0] = 첫 번째로 선택한 그림
+    var anchorCol = colOf[anchorIdx], anchorRow = rowOf[anchorIdx];
+    var anchorU = uVals[anchorIdx], anchorV = vVals[anchorIdx];
+
+    var colOffset = {}; colOffset[anchorCol] = 0;
+    for(var c=anchorCol+1; c<numCols; c++){ colOffset[c] = colOffset[c-1] + colSize[c-1]/2 + hGapM + colSize[c]/2; }
+    for(var c2=anchorCol-1; c2>=0; c2--){ colOffset[c2] = colOffset[c2+1] - colSize[c2]/2 - hGapM - colSize[c2+1]/2; }
+
+    var rowOffset = {}; rowOffset[anchorRow] = 0;
+    for(var r=anchorRow+1; r<numRows; r++){ rowOffset[r] = rowOffset[r-1] - (rowSize[r-1]/2 + vGapM + rowSize[r]/2); }
+    for(var r2=anchorRow-1; r2>=0; r2--){ rowOffset[r2] = rowOffset[r2+1] + (rowSize[r2]/2 + vGapM + rowSize[r2+1]/2); }
+
+    list.forEach(function(a, i){
+      var targetU = anchorU + colOffset[colOf[i]];
+      var targetV = anchorV + rowOffset[rowOf[i]];
+      axes.setUV(a, targetU, targetV);
+    });
+
+    updateArtworkListUI();
+    if(selected) updateDistanceReadouts(selected);
+    pushHistory();
+  }
+
+  btnApplySpacing.addEventListener('click', function(){
+    if(multiSelectedArtworks.length < 2) return;
+    var hGap = (parseFloat(spacingHCm.value)||0) / 100;
+    var vGap = (parseFloat(spacingVCm.value)||0) / 100;
+    arrangeSelectionSpacing(multiSelectedArtworks.slice(), hGap, vGap);
+  });
 
   rotateSlider.addEventListener('input', function(){
     if(!selected) return;
