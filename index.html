@@ -1480,18 +1480,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       if(hits.length){
         var obj = hits[0].object;
         var art = artworks.filter(function(a){return a.plane===obj;})[0];
-        if(art){
-          if(e.ctrlKey || e.metaKey){
-            if(multiSelectedArtworks.length === 0 && selected && selected !== art){
-              multiSelectedArtworks.push(selected);
-            }
-            var midx = multiSelectedArtworks.indexOf(art);
-            if(midx>-1){ multiSelectedArtworks.splice(midx,1); } else { multiSelectedArtworks.push(art); }
-            updateArtworkListUI();
-            return;
-          }
-          selectArtwork(art); startDragArtwork(art); return;
-        }
+        if(art){ selectArtwork(art); startDragArtwork(art); return; }
         var fig = figures.filter(function(f){return f.sprite===obj;})[0];
         if(fig){ startDragFigure(fig); return; }
       }
@@ -1951,24 +1940,16 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var plane = new THREE.Mesh(boxGeo, boxMat);
     group.add(plane);
 
-    var outlineGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1));
-    var outlineMat = new THREE.LineBasicMaterial({ color: 0x2f9bff, linewidth: 2 });
-    var outline = new THREE.LineSegments(outlineGeo, outlineMat);
-    outline.visible = false;
-    outline.renderOrder = 999;
-    group.add(outline);
-
     scene.add(group);
 
     var art = {
-      group:group, plane:plane, outline:outline, w:w, h:h, d:d, name:name,
+      group:group, plane:plane, w:w, h:h, d:d, name:name,
       roll:0, snapped:false, heightLocked:false,
       heightLockRef:'bottom', heightLockValue:0,
       groupId:null, faceOutward:false,
       id:'art'+(artCount++)
     };
     artworks.push(art);
-    updateArtworkOutlineScale(art);
 
     if(walls.length){
       var w0 = walls.filter(function(w){return !w.isOpen;})[0] || walls[0];
@@ -1986,16 +1967,11 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     pushHistory();
   }
 
-  function updateArtworkOutlineScale(art){
-    art.outline.scale.set(art.w + 0.03, art.h + 0.03, art.d + 0.02);
-  }
-
   function resizeArtwork(art, wM, hM){
     wM=Math.max(0.02,wM); hM=Math.max(0.02,hM);
     art.w=wM; art.h=hM;
     art.plane.geometry.dispose();
     art.plane.geometry = new THREE.BoxGeometry(wM,hM,art.d);
-    updateArtworkOutlineScale(art);
     applyHeightLock(art);
     if(art.snapped && art.wall){
       // 크기 변경 후에도 벽과의 간격이 두께에 맞게 유지되도록 재배치합니다.
@@ -2009,7 +1985,6 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     art.d=dM;
     art.plane.geometry.dispose();
     art.plane.geometry = new THREE.BoxGeometry(art.w,art.h,art.d);
-    updateArtworkOutlineScale(art);
     if(art.snapped && art.wall){
       var p = art.group.position.clone();
       placeOnWall(art, art.wall, p);
@@ -2048,15 +2023,6 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       artworkList.appendChild(item);
     });
     updateGroupControlsUI();
-    updateArtworkHighlights();
-  }
-
-  function updateArtworkHighlights(){
-    artworks.forEach(function(a){
-      var isSel = (a===selected) || (multiSelectedArtworks.indexOf(a) > -1) ||
-        (selected && selected.groupId && a.groupId===selected.groupId);
-      a.outline.visible = isSel;
-    });
   }
 
   function updateGroupControlsUI(){
