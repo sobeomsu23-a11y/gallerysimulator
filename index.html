@@ -324,6 +324,20 @@
         <button class="btn btn-primary" id="btn-apply-spacing" style="margin-top:10px;">간격 맞춰 정렬</button>
         <div class="hint">첫 번째로 선택한 그림을 기준으로 나머지를 재배치합니다. 현재 대략적인 가로·세로 배열을 자동으로 인식하므로, 그림 여러 점을 바둑판처럼 러프하게 걸어둔 뒤 한 번에 격자로 맞출 수 있어요.</div>
       </div>
+
+      <div class="sub-card" id="batch-height-panel" style="display:none;">
+        <div class="sub-card-title">선택한 그림 높이 일괄 고정</div>
+        <label class="field-label">기준점</label>
+        <div class="btn-row">
+          <button class="btn" id="batch-ref-bottom" data-ref="bottom">아랫변</button>
+          <button class="btn" id="batch-ref-center" data-ref="center">중앙</button>
+          <button class="btn" id="batch-ref-top" data-ref="top">윗변</button>
+        </div>
+        <label class="field-label">고정 높이 (cm, 바닥 기준)</label>
+        <input type="number" id="batch-height-cm" min="0" step="0.5" value="150">
+        <button class="btn btn-primary" id="btn-apply-batch-height" style="margin-top:10px;">선택한 그림에 높이 고정 적용</button>
+        <div class="hint">선택된 모든 그림의 "높이 고정"을 켜고, 지정한 기준점·높이로 한 번에 맞춥니다.</div>
+      </div>
       </div>
     </div>
 
@@ -651,6 +665,9 @@
   var artUploadBtn = $('art-upload-btn'), artFileInput = $('art-file-input'), artworkList = $('artwork-list');
   var btnGroupArt = $('btn-group-art'), btnUngroupArt = $('btn-ungroup-art');
   var spacingPanel = $('spacing-panel'), spacingHCm = $('spacing-h-cm'), spacingVCm = $('spacing-v-cm'), btnApplySpacing = $('btn-apply-spacing');
+  var batchHeightPanel = $('batch-height-panel'), batchHeightCm = $('batch-height-cm'), btnApplyBatchHeight = $('btn-apply-batch-height');
+  var batchRefBottomBtn = $('batch-ref-bottom'), batchRefCenterBtn = $('batch-ref-center'), batchRefTopBtn = $('batch-ref-top');
+  var batchHeightRef = 'bottom';
   var snapToggle = $('snap-toggle');
   var selectedPanel = $('selected-panel'), selName = $('sel-name');
   var selWcm = $('sel-w-cm'), selHcm = $('sel-h-cm'), selDcm = $('sel-d-cm');
@@ -2012,6 +2029,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     btnGroupArt.disabled = multiSelectedArtworks.length < 2;
     btnUngroupArt.disabled = !(selected && selected.groupId);
     spacingPanel.style.display = multiSelectedArtworks.length >= 2 ? 'block' : 'none';
+    batchHeightPanel.style.display = multiSelectedArtworks.length >= 2 ? 'block' : 'none';
   }
 
   function setHeightLockRefUI(ref){
@@ -2194,6 +2212,46 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var hGap = (parseFloat(spacingHCm.value)||0) / 100;
     var vGap = (parseFloat(spacingVCm.value)||0) / 100;
     arrangeSelectionSpacing(multiSelectedArtworks.slice(), hGap, vGap);
+  });
+
+  /* =========================================================
+     선택한 그림들의 높이 일괄 고정
+  ========================================================= */
+  function setBatchHeightRefUI(ref){
+    batchHeightRef = ref;
+    [batchRefBottomBtn, batchRefCenterBtn, batchRefTopBtn].forEach(function(btn){
+      btn.classList.toggle('active', btn.dataset.ref === ref);
+    });
+  }
+  setBatchHeightRefUI('bottom');
+
+  [batchRefBottomBtn, batchRefCenterBtn, batchRefTopBtn].forEach(function(btn){
+    btn.addEventListener('click', function(){ setBatchHeightRefUI(btn.dataset.ref); });
+  });
+
+  function applyBatchHeightLock(list, ref, valueM){
+    if(!list.length) return;
+    list.forEach(function(a){
+      a.heightLocked = true;
+      a.heightLockRef = ref;
+      a.heightLockValue = valueM;
+      applyHeightLock(a);
+    });
+    updateArtworkListUI();
+    if(selected){
+      heightLockToggle.checked = selected.heightLocked;
+      heightLockOptions.style.display = selected.heightLocked ? 'block' : 'none';
+      setHeightLockRefUI(selected.heightLockRef);
+      heightLockCm.value = (selected.heightLockValue*100).toFixed(1);
+      updateDistanceReadouts(selected);
+    }
+    pushHistory();
+  }
+
+  btnApplyBatchHeight.addEventListener('click', function(){
+    if(multiSelectedArtworks.length < 2) return;
+    var v = (parseFloat(batchHeightCm.value)||0) / 100;
+    applyBatchHeightLock(multiSelectedArtworks.slice(), batchHeightRef, v);
   });
 
   rotateSlider.addEventListener('input', function(){
