@@ -561,6 +561,7 @@
   var currentFocalLengthMm = 24; // 35mm 환산 초점거리(mm). 10~100 범위.
   var orbiting = false, lastMouse = {x:0,y:0};
   var panning = false;
+  var emptyClickStart = null;
 
   var walls = [];
   var perimeterWallCount = 0;
@@ -1506,6 +1507,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
       orbiting = true;
       lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+      emptyClickStart = { x:e.clientX, y:e.clientY, ctrl:(e.ctrlKey||e.metaKey) };
     });
 
     window.addEventListener('pointermove', function(e){
@@ -1524,8 +1526,22 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       updateCamera();
     });
 
-    window.addEventListener('pointerup', function(){
+    window.addEventListener('pointerup', function(e){
       var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall');
+      if(emptyClickStart && !emptyClickStart.ctrl){
+        var moved = Math.hypot(e.clientX-emptyClickStart.x, e.clientY-emptyClickStart.y);
+        if(moved < 5 && (multiSelectedArtworks.length || selected || selectedIslandWall)){
+          multiSelectedArtworks = [];
+          selected = null;
+          selectedIslandWall = null;
+          selectedPanel.classList.remove('show');
+          islandWallPanel.classList.remove('show');
+          distHud.classList.remove('show');
+          updateArtworkListUI();
+          updateIslandWallListUI();
+        }
+      }
+      emptyClickStart = null;
       orbiting = false;
       panning = false;
       dragging = false;
@@ -1951,10 +1967,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var plane = new THREE.Mesh(boxGeo, boxMat);
     group.add(plane);
 
-    var outlineGeo = new THREE.BoxGeometry(1,1,1);
-    var outlineMat = new THREE.MeshBasicMaterial({ color: 0x2f9bff });
-    var outline = new THREE.Mesh(outlineGeo, outlineMat);
-    outline.visible = false;
+    var outline = createArtworkOutline();
     group.add(outline);
 
     scene.add(group);
@@ -1984,11 +1997,37 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     pushHistory();
   }
 
+  var artworkOutlineMat = new THREE.MeshBasicMaterial({ color: 0x2f9bff });
+
+  // 테두리를 "속이 빈 액자" 모양(상/하/좌/우 4개의 얇은 막대)으로 만듭니다.
+  // 그림 정면과 같은 자리에 겹치는 면이 전혀 없어서, 그림을 가리거나
+  // z-fighting(두 면이 겹쳐서 깜빡이는 현상)으로 화면을 뒤덮는 문제가 생기지 않습니다.
+  function createArtworkOutline(){
+    var g = new THREE.Group();
+    var bars = {
+      top: new THREE.Mesh(new THREE.BoxGeometry(1,1,1), artworkOutlineMat),
+      bottom: new THREE.Mesh(new THREE.BoxGeometry(1,1,1), artworkOutlineMat),
+      left: new THREE.Mesh(new THREE.BoxGeometry(1,1,1), artworkOutlineMat),
+      right: new THREE.Mesh(new THREE.BoxGeometry(1,1,1), artworkOutlineMat)
+    };
+    g.add(bars.top, bars.bottom, bars.left, bars.right);
+    g.visible = false;
+    g.userData.bars = bars;
+    return g;
+  }
+
   function updateArtworkOutlineScale(art){
-    // 그림보다 가로/세로로 3.5cm씩 더 크게, 두께는 살짝 얇게 만들어
-    // 그림 정면을 가리지 않으면서 테두리처럼 옆으로 삐져나와 보이게 합니다.
-    var margin = 0.035;
-    art.outline.scale.set(art.w + margin, art.h + margin, Math.max(art.d - 0.002, 0.005));
+    var t = 0.025; // 테두리 두께 2.5cm
+    var w = art.w, h = art.h, dep = Math.max(art.d, 0.01);
+    var bars = art.outline.userData.bars;
+    bars.top.scale.set(w + 2*t, t, dep);
+    bars.top.position.set(0, h/2 + t/2, 0);
+    bars.bottom.scale.set(w + 2*t, t, dep);
+    bars.bottom.position.set(0, -(h/2 + t/2), 0);
+    bars.left.scale.set(t, h, dep);
+    bars.left.position.set(-(w/2 + t/2), 0, 0);
+    bars.right.scale.set(t, h, dep);
+    bars.right.position.set(w/2 + t/2, 0, 0);
   }
 
   function resizeArtwork(art, wM, hM){
@@ -2054,8 +2093,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   function updateArtworkHighlights(){
     artworks.forEach(function(a){
-      var isSel = (a===selected) || (multiSelectedArtworks.indexOf(a) > -1) ||
-        (selected && selected.groupId && a.groupId===selected.groupId);
+      var isSel = (a===selected) || (multiSelectedArtworks.indexOf(a) > -1);
       a.outline.visible = isSel;
     });
   }
