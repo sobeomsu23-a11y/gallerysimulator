@@ -499,6 +499,13 @@
     </div>
 
     <div class="lens-hud hidden" id="lens-hud">
+      <div class="toggle-row">
+        <span class="tlabel">시야 가리는 벽 자동 투명화</span>
+        <label class="switch">
+          <input type="checkbox" id="auto-hide-walls-toggle">
+          <span class="slider-tg"></span>
+        </label>
+      </div>
       <div class="lh-title"><span>카메라 화각 (35mm 환산)</span><span class="v" id="focal-length-val">24mm</span></div>
       <input type="range" id="focal-length-slider" min="10" max="100" step="1" value="24">
     </div>
@@ -645,7 +652,47 @@
   var step1 = $('step1'), step2 = $('step2'), step3 = $('step3'), stepFigures = $('step-figures'), stepFooter = $('step-footer'), vpHud = $('vp-hud');
   var btnHudClose = $('btn-hud-close');
   var lensHud = $('lens-hud'), focalLengthSlider = $('focal-length-slider'), focalLengthVal = $('focal-length-val');
+  var autoHideWallsToggle = $('auto-hide-walls-toggle');
 
+  // 벽의 "바깥쪽 면"이 카메라 쪽을 보고 있으면(=카메라가 그 벽의 바깥쪽에 있으면)
+  // 그 벽이 시야를 가리고 있다고 판단합니다.
+  function isWallBlockingView(w){
+    if(!w.mesh || !w.inward || !camera) return false;
+    var mid = w.p1.clone().add(w.p2).multiplyScalar(0.5);
+    var toCam = camera.position.clone().sub(mid);
+    var outward = w.inward.clone().negate();
+    return toCam.dot(outward) > 0;
+  }
+
+  function updateWallAutoTransparency(){
+    if(!autoHideWallsToggle || !autoHideWallsToggle.checked) return;
+    var perim = walls.slice(0, perimeterWallCount);
+    perim.forEach(function(w){
+      if(!w.mesh) return;
+      var blocking = isWallBlockingView(w);
+      w.blocking = blocking;
+      w.mesh.material.transparent = true;
+      w.mesh.material.opacity = blocking ? 0.08 : 1;
+      w.mesh.material.depthWrite = !blocking;
+    });
+    artworks.forEach(function(a){
+      a.group.visible = !(a.wall && a.wall.blocking);
+    });
+  }
+
+  autoHideWallsToggle.addEventListener('change', function(){
+    if(!autoHideWallsToggle.checked){
+      walls.forEach(function(w){
+        if(w.mesh){
+          w.mesh.material.opacity = 1;
+          w.mesh.material.transparent = false;
+          w.mesh.material.depthWrite = true;
+        }
+        w.blocking = false;
+      });
+      artworks.forEach(function(a){ a.group.visible = true; });
+    }
+  });
   // 35mm(풀프레임, 센서 높이 24mm) 환산 초점거리를 THREE.PerspectiveCamera의 수직 fov(도)로 변환합니다.
   function focalLengthToFov(mm){
     return THREE.MathUtils.radToDeg(2*Math.atan(12/mm));
@@ -1384,7 +1431,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
 
       if(!isOpenWall){
         var wallGeo = new THREE.PlaneGeometry(len, ceilingHeight);
-        wallMesh = new THREE.Mesh(wallGeo, wallMat);
+        wallMesh = new THREE.Mesh(wallGeo, wallMat.clone());
         wallMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(nx,0,nz));
         wallMesh.position.set(midx, ceilingHeight/2, midz);
         wallMesh.userData.isWall = true;
@@ -3067,6 +3114,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       lastFrameTime = now;
       updateKeyboardMovement(dt);
       if(selected) updateDistanceReadouts(selected);
+      updateWallAutoTransparency();
       if(renderer) renderer.render(scene, camera);
     })();
   }
