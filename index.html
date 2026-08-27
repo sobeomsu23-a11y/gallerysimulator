@@ -303,7 +303,8 @@
       <input type="file" id="art-file-input" accept="image/*" multiple>
       <div class="hint">추가할 때마다 실제 크기(cm)를 입력하는 창이 열립니다.</div>
       <div id="artwork-list"></div>
-      <div class="hint">Ctrl(Mac은 Cmd)를 누른 채 목록에서 여러 그림을 클릭하면 함께 선택할 수 있어요.</div>
+      <button class="btn" id="btn-select-all-art" style="width:100%;margin-top:6px;">전체 선택</button>
+      <div class="hint">Ctrl(Mac은 Cmd)를 누른 채 목록에서 여러 그림을 클릭하면 함께 선택할 수 있어요. 여러 그림이 선택된 상태에서 3D 화면에서 그중 하나를 드래그하면 전부 함께 움직입니다.</div>
       <div class="btn-row">
         <button class="btn" id="btn-group-art" disabled>그룹으로 묶기</button>
         <button class="btn" id="btn-ungroup-art" disabled>그룹 해제</button>
@@ -665,6 +666,7 @@
   var floorplanStage = $('floorplan-stage'), threeContainerHolder = null;
   var artUploadBtn = $('art-upload-btn'), artFileInput = $('art-file-input'), artworkList = $('artwork-list');
   var btnGroupArt = $('btn-group-art'), btnUngroupArt = $('btn-ungroup-art');
+  var btnSelectAllArt = $('btn-select-all-art');
   var spacingPanel = $('spacing-panel'), spacingHCm = $('spacing-h-cm'), spacingVCm = $('spacing-v-cm'), btnApplySpacing = $('btn-apply-spacing');
   var batchHeightPanel = $('batch-height-panel'), batchHeightCm = $('batch-height-cm'), btnApplyBatchHeight = $('btn-apply-batch-height');
   var batchRefBottomBtn = $('batch-ref-bottom'), batchRefCenterBtn = $('batch-ref-center'), batchRefTopBtn = $('batch-ref-top');
@@ -1491,6 +1493,14 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
             updateArtworkListUI();
             return;
           }
+          if(multiSelectedArtworks.indexOf(art) > -1 && multiSelectedArtworks.length > 1){
+            // 이미 여러 개가 선택된 상태에서 그중 하나를 그냥 클릭·드래그하면
+            // 다중 선택을 유지한 채 다 함께 움직입니다.
+            selected = art;
+            updateArtworkListUI();
+            startDragArtwork(art);
+            return;
+          }
           selectArtwork(art); startDragArtwork(art); return;
         }
         var fig = figures.filter(function(f){return f.sprite===obj;})[0];
@@ -1559,6 +1569,17 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     }, { passive:false });
   }
 
+  // 함께 움직여야 하는 대상: ①영구 그룹(groupId)이면 같은 그룹 멤버, ②아니면 지금 다중 선택된 목록(2개 이상일 때)
+  function getMoveCompanions(art){
+    if(art.groupId){
+      return artworks.filter(function(x){ return x!==art && x.groupId===art.groupId; });
+    }
+    if(multiSelectedArtworks.indexOf(art) > -1 && multiSelectedArtworks.length > 1){
+      return multiSelectedArtworks.filter(function(x){ return x!==art; });
+    }
+    return [];
+  }
+
   function startDragArtwork(art){
     dragging = true; orbiting = false; dragKind='artwork';
     if(!snapToggle.checked){
@@ -1567,14 +1588,13 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       dragPlane.setFromNormalAndCoplanarPoint(camDir, art.group.position);
     }
     groupMoveInfo = null;
-    if(art.groupId){
+    var companions = getMoveCompanions(art);
+    if(companions.length){
       var leadArc = (art.snapped && art.wall) ? arcLengthOnWall(art.wall, art.group.position) : null;
-      groupMoveInfo = { leadArc: leadArc, offsets: {} };
-      artworks.forEach(function(other){
-        if(other!==art && other.groupId===art.groupId){
-          var oArc = (leadArc!==null && other.snapped && other.wall) ? arcLengthOnWall(other.wall, other.group.position) : null;
-          groupMoveInfo.offsets[other.id] = (oArc!==null) ? (oArc - leadArc) : null;
-        }
+      groupMoveInfo = { leadArc: leadArc, offsets: {}, companions: companions };
+      companions.forEach(function(other){
+        var oArc = (leadArc!==null && other.snapped && other.wall) ? arcLengthOnWall(other.wall, other.group.position) : null;
+        groupMoveInfo.offsets[other.id] = (oArc!==null) ? (oArc - leadArc) : null;
       });
     }
   }
@@ -1637,12 +1657,11 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       }
     }
     if(selected.heightLocked) applyHeightLock(selected);
-    if(selected.groupId){
+    if(groupMoveInfo){
       var moveDelta = selected.group.position.clone().sub(prevPos);
       var leadArcNow = (selected.snapped && selected.wall) ? arcLengthOnWall(selected.wall, selected.group.position) : null;
-      artworks.forEach(function(other){
-        if(other===selected || other.groupId!==selected.groupId) return;
-        var offset = groupMoveInfo ? groupMoveInfo.offsets[other.id] : undefined;
+      groupMoveInfo.companions.forEach(function(other){
+        var offset = groupMoveInfo.offsets[other.id];
         if(leadArcNow!==null && offset!==null && offset!==undefined){
           var res = pointAtArcLength(leadArcNow + offset);
           if(res){
@@ -2166,6 +2185,15 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   btnGroupArt.addEventListener('click', groupSelectedArtworks);
   btnUngroupArt.addEventListener('click', function(){ if(selected) ungroupArtwork(selected); });
+
+  btnSelectAllArt.addEventListener('click', function(){
+    if(artworks.length < 1) return;
+    multiSelectedArtworks = artworks.slice();
+    selected = null;
+    selectedPanel.classList.remove('show');
+    distHud.classList.remove('show');
+    updateArtworkListUI();
+  });
 
   /* =========================================================
      선택한 그림들의 간격 맞추기 (2점 이상)
