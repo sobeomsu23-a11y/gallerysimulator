@@ -112,6 +112,16 @@
   .footer-actions{margin-top:auto;padding:18px 22px;border-top:1px solid var(--line);}
 
   #viewport{flex:1;position:relative;background:var(--viewport-bg);overflow:hidden;}
+  #viewport canvas{touch-action:none;}
+
+  @media (orientation: portrait) and (max-width: 900px) {
+    #app{ flex-direction: column-reverse; }
+    #sidebar{
+      width:100%; min-width:0;
+      height:42vh; max-height:42vh;
+      border-right:none; border-top:1px solid var(--line);
+    }
+  }
 
   #floorplan-stage{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -570,6 +580,9 @@
   var currentFocalLengthMm = 24; // 35mm 환산 초점거리(mm). 10~100 범위.
   var orbiting = false, lastMouse = {x:0,y:0};
   var panning = false;
+  var activeTouches = {};
+  var twoFingerPanning = false;
+  var lastPanMid = {x:0,y:0};
   var emptyClickStart = null;
 
   var walls = [];
@@ -1514,6 +1527,18 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var dom = renderer.domElement;
 
     dom.addEventListener('pointerdown', function(e){
+      if(e.pointerType === 'touch'){
+        activeTouches[e.pointerId] = { x:e.clientX, y:e.clientY };
+        var touchIds = Object.keys(activeTouches);
+        if(touchIds.length >= 2){
+          orbiting = false; dragging = false; dragKind = null; panning = false;
+          twoFingerPanning = true;
+          var tp1 = activeTouches[touchIds[0]], tp2 = activeTouches[touchIds[1]];
+          lastPanMid.x = (tp1.x+tp2.x)/2; lastPanMid.y = (tp1.y+tp2.y)/2;
+          e.preventDefault();
+          return;
+        }
+      }
       if(e.shiftKey){
         panning = true;
         lastMouse.x = e.clientX; lastMouse.y = e.clientY;
@@ -1569,6 +1594,20 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     });
 
     window.addEventListener('pointermove', function(e){
+      if(e.pointerType === 'touch' && activeTouches[e.pointerId]){
+        activeTouches[e.pointerId].x = e.clientX;
+        activeTouches[e.pointerId].y = e.clientY;
+      }
+      if(twoFingerPanning){
+        var touchIds = Object.keys(activeTouches);
+        if(touchIds.length >= 2){
+          var tp1 = activeTouches[touchIds[0]], tp2 = activeTouches[touchIds[1]];
+          var midX = (tp1.x+tp2.x)/2, midY = (tp1.y+tp2.y)/2;
+          panCamera(midX-lastPanMid.x, midY-lastPanMid.y);
+          lastPanMid.x = midX; lastPanMid.y = midY;
+        }
+        return;
+      }
       if(panning){
         panCamera(e.clientX-lastMouse.x, e.clientY-lastMouse.y);
         lastMouse.x = e.clientX; lastMouse.y = e.clientY;
@@ -1584,30 +1623,36 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       updateCamera();
     });
 
-    window.addEventListener('pointerup', function(e){
-      var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall');
-      if(emptyClickStart && !emptyClickStart.ctrl){
-        var moved = Math.hypot(e.clientX-emptyClickStart.x, e.clientY-emptyClickStart.y);
-        if(moved < 5 && (multiSelectedArtworks.length || selected || selectedIslandWall)){
-          multiSelectedArtworks = [];
-          selected = null;
-          selectedIslandWall = null;
-          selectedPanel.classList.remove('show');
-          islandWallPanel.classList.remove('show');
-          distHud.classList.remove('show');
-          updateArtworkListUI();
-          updateIslandWallListUI();
+      function handlePointerUp(e){
+        if(e && e.pointerType === 'touch'){
+          delete activeTouches[e.pointerId];
+          if(Object.keys(activeTouches).length < 2) twoFingerPanning = false;
         }
+        var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall');
+        if(emptyClickStart && !emptyClickStart.ctrl){
+          var moved = Math.hypot(e.clientX-emptyClickStart.x, e.clientY-emptyClickStart.y);
+          if(moved < 5 && (multiSelectedArtworks.length || selected || selectedIslandWall)){
+            multiSelectedArtworks = [];
+            selected = null;
+            selectedIslandWall = null;
+            selectedPanel.classList.remove('show');
+            islandWallPanel.classList.remove('show');
+            distHud.classList.remove('show');
+            updateArtworkListUI();
+            updateIslandWallListUI();
+          }
+        }
+        emptyClickStart = null;
+        orbiting = false;
+        panning = false;
+        dragging = false;
+        dragKind = null;
+        draggedFigure = null;
+        draggedIslandWall = null;
+        if(wasPlacementDrag) pushHistory();
       }
-      emptyClickStart = null;
-      orbiting = false;
-      panning = false;
-      dragging = false;
-      dragKind = null;
-      draggedFigure = null;
-      draggedIslandWall = null;
-      if(wasPlacementDrag) pushHistory();
-    });
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
 
     dom.addEventListener('wheel', function(e){
       e.preventDefault();
