@@ -114,7 +114,7 @@
   #viewport{flex:1;position:relative;background:var(--viewport-bg);overflow:hidden;}
   #viewport canvas{touch-action:none;}
 
-  @media (orientation: portrait) and (max-width: 900px) {
+  @media (orientation: portrait) and (max-width: 900px) and (hover: none) and (pointer: coarse) {
     #app{ flex-direction: column-reverse; }
     #sidebar{
       width:100%; min-width:0;
@@ -582,6 +582,7 @@
   var panning = false;
   var activeTouches = {};
   var twoFingerPanning = false;
+  var lastPanDist = 0;
   var lastPanMid = {x:0,y:0};
   var emptyClickStart = null;
 
@@ -1535,6 +1536,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           twoFingerPanning = true;
           var tp1 = activeTouches[touchIds[0]], tp2 = activeTouches[touchIds[1]];
           lastPanMid.x = (tp1.x+tp2.x)/2; lastPanMid.y = (tp1.y+tp2.y)/2;
+          lastPanDist = Math.hypot(tp2.x-tp1.x, tp2.y-tp1.y);
           e.preventDefault();
           return;
         }
@@ -1605,6 +1607,14 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           var midX = (tp1.x+tp2.x)/2, midY = (tp1.y+tp2.y)/2;
           panCamera(midX-lastPanMid.x, midY-lastPanMid.y);
           lastPanMid.x = midX; lastPanMid.y = midY;
+
+          var dist = Math.hypot(tp2.x-tp1.x, tp2.y-tp1.y);
+          if(lastPanDist > 0){
+            spherical.radius *= (lastPanDist / dist);
+            spherical.radius = Math.max(1, Math.min(60, spherical.radius));
+            updateCamera();
+          }
+          lastPanDist = dist;
         }
         return;
       }
