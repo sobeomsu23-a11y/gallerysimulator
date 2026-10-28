@@ -1458,8 +1458,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         wallMesh.add(wallEdges);
       }
 
-      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall });
-    }
+      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall, height:ceilingHeight });    }
     perimeterWallCount = walls.length;
 
     var xs=pts2d.map(function(p){return p.x;}), ys=pts2d.map(function(p){return p.y;});
@@ -1781,9 +1780,10 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     updateDistanceReadouts(selected);
   }
 
-  function placeOnWall(art, wall, point){
+ function placeOnWall(art, wall, point){
     var dir = art.faceOutward ? wall.inward.clone().negate() : wall.inward;
-    var y = Math.max(art.h/2*0.2, Math.min(ceilingHeight-0.02, point.y));
+    var maxH = (wall && wall.height) ? wall.height : ceilingHeight;
+    var y = Math.max(art.h/2*0.2, Math.min(maxH-0.02, point.y));
     var pos = point.clone(); pos.y = y;
     pos.addScaledVector(dir, 0.015);
     art.group.position.copy(pos);
@@ -1850,7 +1850,8 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     if(art.heightLockRef === 'bottom') y = v + art.h/2;
     else if(art.heightLockRef === 'top') y = v - art.h/2;
     else y = v;
-    y = Math.max(art.h/2*0.05, Math.min(ceilingHeight-0.02, y));
+    var maxH = (art.wall && art.wall.height) ? art.wall.height : ceilingHeight;
+    y = Math.max(art.h/2*0.05, Math.min(maxH-0.02, y));
     art.group.position.y = y;
   }
 
@@ -2846,12 +2847,14 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     iw.frontEntry.inward = dirWorld(0,1);
     iw.frontEntry.dir = dirWorld(1,0);
     iw.frontEntry.length = iw.length;
+    iw.frontEntry.height = iw.height;
 
     iw.backEntry.p1 = new THREE.Vector3(f2.x, 0, f2.z);
     iw.backEntry.p2 = new THREE.Vector3(f1.x, 0, f1.z);
     iw.backEntry.inward = dirWorld(0,-1);
     iw.backEntry.dir = dirWorld(-1,0);
     iw.backEntry.length = iw.length;
+    iw.backEntry.height = iw.height;
 
     var halfT = iw.thickness/2;
     var l1 = computeIslandWallLocal(iw, -halfL, -halfT);
@@ -2861,6 +2864,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     iw.leftEntry.inward = dirWorld(-1,0);
     iw.leftEntry.dir = dirWorld(0,1);
     iw.leftEntry.length = iw.thickness;
+    iw.leftEntry.height = iw.height;
 
     var r1 = computeIslandWallLocal(iw, halfL, halfT);
     var r2 = computeIslandWallLocal(iw, halfL, -halfT);
@@ -2869,6 +2873,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     iw.rightEntry.inward = dirWorld(1,0);
     iw.rightEntry.dir = dirWorld(0,-1);
     iw.rightEntry.length = iw.thickness;
+    iw.rightEntry.height = iw.height;
   }
 
   function rebuildIslandWallGeometry(iw){
