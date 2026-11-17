@@ -424,21 +424,27 @@
         </label>
       </div>
       <div class="hint">켜두면 그림을 드래그할 때 가장 가까운 벽면에 자동으로 달라붙습니다. 끄면 공간 안 어디든 자유롭게 옮길 수 있어요.</div>
-      </div>
-    </div>
 
-    <div class="panel-section hidden" id="step-figures">
-      <div class="sec-label"><span class="num">4</span>인체 모형 추가<span class="chev">▾</span></div>
-      <div class="panel-body">
-      <div class="btn-row">
-        <button class="btn" id="btn-add-male">성인 남성</button>
-        <button class="btn" id="btn-add-female">성인 여성</button>
+      <div id="rotation-panel" style="display:none;">
+        <div class="sub-card">
+          <div class="sub-card-title">선택한 그림 기울기 (°)</div>
+          <div class="size-grid" style="grid-template-columns:1fr 1fr 1fr;">
+            <div>
+              <label class="field-label" style="color:#e53935;">X</label>
+              <input type="number" id="rot-x" step="1" disabled>
+            </div>
+            <div>
+              <label class="field-label" style="color:#43a047;">Y</label>
+              <input type="number" id="rot-y" step="1" disabled>
+            </div>
+            <div>
+              <label class="field-label" style="color:#1e66f5;">Z</label>
+              <input type="number" id="rot-z" step="1" disabled>
+            </div>
+          </div>
+          <div class="hint">기즈모의 회전 핸들을 끌면 값이 실시간으로 바뀌고, 숫자를 직접 입력해도 그림이 그 각도로 회전합니다. 그림이 선택되어 있어야 입력할 수 있어요.</div>
+        </div>
       </div>
-      <div class="btn-row">
-        <button class="btn" id="btn-add-child">어린이</button>
-      </div>
-      <div class="hint">평균 신장 참고용 모형입니다 (성인 남성 약 172cm · 성인 여성 약 160cm · 어린이 약 115cm, 6~7세 기준). 3D 공간에서 클릭 후 드래그하면 바닥 위에서 자유롭게 옮길 수 있어요.</div>
-      <div id="figure-list"></div>
       </div>
     </div>
 
@@ -737,6 +743,8 @@
   var batchRefBottomBtn = $('batch-ref-bottom'), batchRefCenterBtn = $('batch-ref-center'), batchRefTopBtn = $('batch-ref-top');
   var batchHeightRef = 'bottom';
   var snapToggle = $('snap-toggle');
+  var rotationPanel = $('rotation-panel');
+  var rotXInput = $('rot-x'), rotYInput = $('rot-y'), rotZInput = $('rot-z');
   var selectedPanel = $('selected-panel'), selName = $('sel-name');
   var selWcm = $('sel-w-cm'), selHcm = $('sel-h-cm'), selDcm = $('sel-d-cm');
   var rotateSlider = $('rotate-slider'), rotateVal = $('rotate-val');
@@ -2684,15 +2692,61 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   });
 
   // 스냅이 꺼지면 시점 기준 회전 슬라이더는 비활성화 (기즈모 회전 사용)
+  // 그리고 X/Y/Z 기울기 패널을 펼칩니다.
   function updateRotateSliderState(){
     var off = !snapToggle.checked;
     rotateSlider.disabled = off;
     rotateSlider.style.opacity = off ? 0.35 : 1;
     rotateSlider.style.cursor = off ? 'not-allowed' : '';
     rotateSlider.title = off ? '스냅을 끈 상태에서는 3D 화면의 기즈모로 회전하세요' : '';
+    rotationPanel.style.display = off ? 'block' : 'none';
   }
   snapToggle.addEventListener('change', updateRotateSliderState);
   updateRotateSliderState();
+
+  // ---- X/Y/Z 기울기 표시 · 입력 ----
+  // 오일러 각 순서 'YXZ': Y = 좌우 방향(요), X = 앞뒤 기울기(피치), Z = 면 안에서의 회전(롤)
+  var ROT_ORDER = 'YXZ';
+
+  function fmtDeg(rad){
+    var v = Math.round(THREE.MathUtils.radToDeg(rad) * 10) / 10;
+    return String(v);
+  }
+
+  // 현재 그림의 회전값을 입력칸에 반영 (매 프레임 호출)
+  function updateRotationReadouts(){
+    var enabled = !!selected && !snapToggle.checked;
+    [rotXInput, rotYInput, rotZInput].forEach(function(el){ el.disabled = !enabled; });
+    if(!enabled){
+      if(!selected){ rotXInput.value = ''; rotYInput.value = ''; rotZInput.value = ''; }
+      return;
+    }
+    var ae = document.activeElement;
+    if(ae === rotXInput || ae === rotYInput || ae === rotZInput) return; // 입력 중에는 덮어쓰지 않음
+    var eu = new THREE.Euler().setFromQuaternion(selected.group.quaternion, ROT_ORDER);
+    var xs = fmtDeg(eu.x), ys = fmtDeg(eu.y), zs = fmtDeg(eu.z);
+    if(rotXInput.value !== xs) rotXInput.value = xs;
+    if(rotYInput.value !== ys) rotYInput.value = ys;
+    if(rotZInput.value !== zs) rotZInput.value = zs;
+  }
+
+  // 숫자를 입력하면 그 각도로 회전
+  function applyRotationInputs(){
+    if(!selected || snapToggle.checked) return;
+    var rad = THREE.MathUtils.degToRad;
+    var eu = new THREE.Euler(
+      rad(parseFloat(rotXInput.value) || 0),
+      rad(parseFloat(rotYInput.value) || 0),
+      rad(parseFloat(rotZInput.value) || 0),
+      ROT_ORDER
+    );
+    selected.group.quaternion.setFromEuler(eu);
+    selected.snapped = false;
+  }
+  [rotXInput, rotYInput, rotZInput].forEach(function(el){
+    el.addEventListener('input', applyRotationInputs);
+    el.addEventListener('change', function(){ pushHistory(); });
+  });
 
   faceOutwardToggle.addEventListener('change', function(){
     if(!selected) return;
@@ -3407,6 +3461,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       if(selected) updateDistanceReadouts(selected);
       updateWallAutoTransparency();
       updateGizmo();
+      updateRotationReadouts();
       if(renderer) renderer.render(scene, camera);
     })();
   }
