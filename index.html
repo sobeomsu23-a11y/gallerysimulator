@@ -515,7 +515,7 @@
           <span class="slider-tg"></span>
         </label>
       </div>
-      <div class="hint">켜고 3D 화면에서 벽을 클릭하면 그 벽이 선택됩니다. 도면에서 그린 점과 점 사이의 선 하나가 벽 하나예요. (문·창문으로 뚫어둔 구간은 선택되지 않습니다.) 이 상태에서도 드래그로 시점을 돌릴 수 있고, 빈 곳을 클릭하면 선택이 해제됩니다.</div>
+      <div class="hint">켜고 3D 화면에서 벽을 클릭하면 그 벽이 선택됩니다. 도면에서 그린 점과 점 사이의 선 하나가 벽 하나예요. 뚫어둔 구간(문·창문)은 점선 사각형으로 표시되고, 점선 안쪽을 클릭하면 선택됩니다. 이 상태에서도 드래그로 시점을 돌릴 수 있고, 빈 곳을 클릭하면 선택이 해제됩니다.</div>
 
       <div id="wall-height-fields" style="display:none;">
         <div class="sub-card">
@@ -532,6 +532,8 @@
           </div>
           <div class="hint">높이는 모두 바닥 기준입니다. 낮은 벽은 '위 끝'만 낮추고, 천장에서 내려오는 벽은 '아래 끝'을 올려서 만드세요. 기본값은 0 ~ 천장 높이예요. 값을 입력하고 Enter를 누르거나 칸 밖을 클릭하면 적용됩니다.</div>
           <button class="btn" id="btn-wall-reset-height" style="margin-top:10px;">기본 높이로 되돌리기</button>
+          <button class="btn btn-primary" id="btn-wall-create" style="margin-top:10px;display:none;">이 점선 구간에 벽 만들기</button>
+          <button class="btn" id="btn-wall-remove" style="margin-top:10px;display:none;">만든 벽 없애고 다시 뚫기</button>
         </div>
       </div>
       </div>
@@ -798,6 +800,7 @@
   var wallSelName = $('wall-sel-name');
   var wallBottomInput = $('wall-bottom-m'), wallTopInput = $('wall-top-m');
   var btnWallResetHeight = $('btn-wall-reset-height');
+  var btnWallCreate = $('btn-wall-create'), btnWallRemove = $('btn-wall-remove');
   var rotationPanel = $('rotation-panel');
   var rotXInput = $('rot-x'), rotYInput = $('rot-y'), rotZInput = $('rot-z');
   var selectedPanel = $('selected-panel'), selName = $('sel-name');
@@ -1524,7 +1527,9 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         wallMesh.add(wallEdges);
       }
 
-      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall, height:ceilingHeight, bottom:0, top:ceilingHeight });    }
+      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall, height:ceilingHeight, bottom:0, top:ceilingHeight, guide:null, fromOpening:false });
+      if(isOpenWall) buildOpeningGuide(walls[walls.length-1]);
+    }
     perimeterWallCount = walls.length;
 
     var xs=pts2d.map(function(p){return p.x;}), ys=pts2d.map(function(p){return p.y;});
@@ -1620,9 +1625,10 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
       if(wallSelectMode){
         // 벽 선택 모드: 그림·기즈모는 무시하고 벽만 고른다. (드래그하면 시점 회전, 제자리 클릭이면 선택)
-        var wsWalls = getPerimeterWalls().filter(function(w){ return w.mesh && !w.blocking; });
-        var wsHits = raycaster.intersectObjects(wsWalls.map(function(w){ return w.mesh; }));
-        var wsWall = wsHits.length ? wsWalls.filter(function(w){ return w.mesh === wsHits[0].object; })[0] : null;
+        var wsWalls = getPerimeterWalls().filter(function(w){ return (w.mesh && !w.blocking) || (!w.mesh && w.isOpen && w.guide); });
+        var wsTarget = function(w){ return w.mesh || w.guide.userData.proxy; };
+        var wsHits = raycaster.intersectObjects(wsWalls.map(wsTarget));
+        var wsWall = wsHits.length ? wsWalls.filter(function(w){ return wsTarget(w) === wsHits[0].object; })[0] : null;
         orbiting = true;
         lastMouse.x = e.clientX; lastMouse.y = e.clientY;
         emptyClickStart = { x:e.clientX, y:e.clientY, ctrl:false, wallMode:true, wallPick:wsWall };
@@ -1785,10 +1791,20 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     return [];
   }
     /* ===== 벽 높이 조절 (6번 항목) ===== */
+  // 선택 표시: 실제 벽은 금빛으로, 뚫린 구간은 점선이 금색 + 안쪽이 옅게 칠해짐
+  function setWallHighlight(w, on){
+    if(!w) return;
+    if(w.mesh){ w.mesh.material.emissive.setHex(on ? 0x5a4510 : 0x000000); }
+    if(w.guide){
+      w.guide.userData.proxy.material.opacity = on ? 0.2 : 0;
+      w.guide.userData.line.material.color.setHex(on ? 0xc9a24b : 0xc0645a);
+    }
+  }
+
   function selectWall(w){
-    if(selectedWall && selectedWall.mesh){ selectedWall.mesh.material.emissive.setHex(0x000000); }
+    setWallHighlight(selectedWall, false);
     selectedWall = w || null;
-    if(selectedWall && selectedWall.mesh){ selectedWall.mesh.material.emissive.setHex(0x5a4510); } // 선택된 벽은 금빛으로 표시
+    setWallHighlight(selectedWall, true);
     syncWallInputs();
   }
 
@@ -1797,17 +1813,93 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     wallHeightFields.style.display = (w && wallSelectMode) ? 'block' : 'none';
     if(!w) return;
     var idx = getPerimeterWalls().indexOf(w) + 1;
-    wallSelName.textContent = '벽 ' + idx + ' · 길이 ' + w.length.toFixed(2) + 'm';
+    wallSelName.textContent = (w.isOpen ? '뚫린 구간 ' : '벽 ') + idx + ' · 길이 ' + w.length.toFixed(2) + 'm' + (w.isOpen ? ' (점선)' : '');
     wallBottomInput.value = (w.bottom || 0).toFixed(2);
     wallTopInput.value = (w.top || ceilingHeight).toFixed(2);
+    btnWallCreate.style.display = w.isOpen ? 'inline-flex' : 'none';
+    btnWallRemove.style.display = (w.fromOpening && w.mesh) ? 'inline-flex' : 'none';
+  }
+
+  // 뚫린 구간 표시용 점선 사각형 + 클릭 판정용 투명 면 (벽 선택 모드에서만 클릭 대상이 됨)
+  function removeOpeningGuide(w){
+    if(!w || !w.guide) return;
+    scene.remove(w.guide);
+    w.guide.traverse(function(o){
+      if(o.geometry) o.geometry.dispose();
+      if(o.material) o.material.dispose();
+    });
+    w.guide = null;
+  }
+
+  function buildOpeningGuide(w){
+    removeOpeningGuide(w);
+    var bottom = w.bottom || 0, top = w.top || ceilingHeight;
+    var len = w.length, h = Math.max(top - bottom, 0.1);
+    var n = w.inward.clone().negate();
+    var g = new THREE.Group();
+    g.position.set((w.p1.x + w.p2.x) / 2, bottom + h / 2, (w.p1.z + w.p2.z) / 2);
+    g.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), n);
+    var hw = len / 2, hh = h / 2, e = 0.01; // e: 바닥/천장과 겹쳐 깜빡이는 것 방지
+    var pts = [
+      -hw,-hh+e,0,  hw,-hh+e,0,   hw,-hh+e,0,  hw,hh-e,0,
+       hw, hh-e,0, -hw,hh-e,0,   -hw,hh-e,0, -hw,-hh+e,0
+    ];
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    var line = new THREE.LineSegments(geo, new THREE.LineDashedMaterial({ color:0xc0645a, dashSize:0.15, gapSize:0.1 }));
+    line.computeLineDistances();
+    var proxy = new THREE.Mesh(
+      new THREE.PlaneGeometry(len, h),
+      new THREE.MeshBasicMaterial({ color:0xc9a24b, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+    );
+    g.add(proxy); g.add(line);
+    g.userData.isWall = true; // 방을 다시 만들 때 함께 지워지도록
+    g.userData.proxy = proxy; g.userData.line = line;
+    scene.add(g);
+    w.guide = g;
+  }
+
+  // 점선(뚫린 구간)에 실제 벽을 만든다. 현재 입력된 아래/위 높이가 그대로 적용됨
+  function createWallOnOpening(w){
+    if(!w || !w.isOpen || w.mesh) return;
+    var bottom = w.bottom || 0, top = w.top || ceilingHeight;
+    var n = w.inward.clone().negate();
+    var mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(w.length, Math.max(top - bottom, 0.1)),
+      new THREE.MeshStandardMaterial({ color:0xf6f4ef, side:THREE.DoubleSide, roughness:0.95 })
+    );
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), n);
+    mesh.position.set((w.p1.x + w.p2.x) / 2, (bottom + top) / 2, (w.p1.z + w.p2.z) / 2);
+    mesh.userData.isWall = true;
+    scene.add(mesh);
+    removeOpeningGuide(w);
+    w.mesh = mesh; w.isOpen = false; w.fromOpening = true;
+    setWallRange(w, bottom, top); // 테두리선까지 새로 만들어 줌
+  }
+
+  // 위에서 만든 벽을 없애고 다시 뚫린 구간(점선)으로 되돌린다
+  function removeWallToOpening(w){
+    if(!w || !w.mesh || !w.fromOpening) return;
+    scene.remove(w.mesh);
+    w.mesh.traverse(function(o){ if(o.geometry) o.geometry.dispose(); });
+    w.mesh.material.dispose();
+    w.mesh = null; w.isOpen = true; w.fromOpening = false; w.blocking = false;
+    buildOpeningGuide(w);
   }
 
   // 벽의 아래 끝(bottom)~위 끝(top) 높이를 바꾸고, 모양과 걸려 있는 그림을 다시 맞춘다
   function setWallRange(w, bottom, top){
-    if(!w || !w.mesh) return;
+    if(!w) return;
+    if(!w.mesh && !w.isOpen) return;
     bottom = Math.max(0, bottom);
     top = Math.min(20, Math.max(bottom + 0.1, top));
     w.bottom = bottom; w.top = top; w.height = top;
+
+    if(!w.mesh){ // 아직 벽이 없는 뚫린 구간: 점선 사각형만 새 높이로 다시 그림
+      buildOpeningGuide(w);
+      if(w === selectedWall) setWallHighlight(w, true);
+      return;
+    }
 
     var h = top - bottom;
     w.mesh.geometry.dispose();
@@ -1851,6 +1943,27 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   btnWallResetHeight.addEventListener('click', function(){
     if(!selectedWall) return;
     setWallRange(selectedWall, 0, ceilingHeight);
+    syncWallInputs();
+    pushHistory();
+  });
+
+  btnWallCreate.addEventListener('click', function(){
+    if(!selectedWall || !selectedWall.isOpen) return;
+    createWallOnOpening(selectedWall);
+    setWallHighlight(selectedWall, true);
+    syncWallInputs();
+    pushHistory();
+  });
+
+  btnWallRemove.addEventListener('click', function(){
+    var w = selectedWall;
+    if(!w || !w.fromOpening || !w.mesh) return;
+    if(artworks.some(function(a){ return a.wall === w; })){
+      alert('이 벽에 걸린 그림이 있어요. 그림을 먼저 옮기거나 삭제한 뒤 다시 시도해 주세요.');
+      return;
+    }
+    removeWallToOpening(w);
+    setWallHighlight(w, true);
     syncWallInputs();
     pushHistory();
   });
@@ -3070,12 +3183,13 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   function serializeScene(){
     var perim = walls.slice(0, perimeterWallCount);
     var roomPoints = perim.map(function(w){ return {x:w.p1.x, y:w.p1.z}; });
-    var openEdgesArr = perim.map(function(w){ return !!w.isOpen; });
+    var openEdgesArr = perim.map(function(w){ return !!w.isOpen || !!w.fromOpening; });
     return {
       version: 2,
       room: {
         points: roomPoints, ceilingHeight: ceilingHeight, openEdges: openEdgesArr,
-        wallRanges: perim.map(function(w){ return { bottom: w.bottom || 0, top: w.top || ceilingHeight }; })
+        wallRanges: perim.map(function(w){ return { bottom: w.bottom || 0, top: w.top || ceilingHeight }; }),
+        createdOnOpening: perim.map(function(w){ return !!w.fromOpening; })
       },
       artworks: artworks.map(function(a){
         var img = a.plane.material[4].map.image;
@@ -3229,7 +3343,9 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     buildRoom(pts2d);
     (data.room.wallRanges || []).forEach(function(r, i){
       var pw = getPerimeterWalls()[i];
-      if(pw && pw.mesh) setWallRange(pw, r.bottom || 0, r.top || ceilingHeight);
+      if(!pw) return;
+      setWallRange(pw, r.bottom || 0, r.top || ceilingHeight);
+      if(pw.isOpen && (data.room.createdOnOpening || [])[i]) createWallOnOpening(pw);
     });
     onResize();
     requestAnimationFrame(function(){ onResize(); animate(); });
@@ -3650,6 +3766,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       updateGizmo();
       updateRotationReadouts();
       updateWallStepVisibility();
+      renderer.render(scene, camera);
     })();
   }
 
