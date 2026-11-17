@@ -1555,6 +1555,18 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       var figMeshes = figures.map(function(f){return f.sprite;});
       var hits = raycaster.intersectObjects(artMeshes.concat(figMeshes));
       if(hits.length){
+        // 그림/인체모형보다 더 가까운 벽이 있으면(=화면에서 벽에 가려져 실제로는
+        // 보이지 않으면) 선택하지 않고 무시합니다.
+        var occluderMeshes = [];
+        walls.forEach(function(w){ if(w.mesh) occluderMeshes.push(w.mesh); });
+        islandWalls.forEach(function(iw){ if(iw.boxMesh) occluderMeshes.push(iw.boxMesh); });
+        var occHits = raycaster.intersectObjects(occluderMeshes);
+        var nearestOcc = occHits.length ? occHits[0].distance : Infinity;
+        if(hits[0].distance > nearestOcc + 1e-4){
+          hits = [];
+        }
+      }
+      if(hits.length){
         var obj = hits[0].object;
         var art = artworks.filter(function(a){return a.plane===obj;})[0];
         if(art){
