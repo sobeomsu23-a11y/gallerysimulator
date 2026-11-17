@@ -505,6 +505,38 @@
       </div>
     </div>
 
+    <div class="panel-section hidden" id="step-wall-height">
+      <div class="sec-label"><span class="num">6</span>벽 높이 조절<span class="chev">▾</span></div>
+      <div class="panel-body">
+      <div class="toggle-row">
+        <span class="tlabel">벽 선택하기</span>
+        <label class="switch">
+          <input type="checkbox" id="wall-select-toggle">
+          <span class="slider-tg"></span>
+        </label>
+      </div>
+      <div class="hint">켜고 3D 화면에서 벽을 클릭하면 그 벽이 선택됩니다. 도면에서 그린 점과 점 사이의 선 하나가 벽 하나예요. (문·창문으로 뚫어둔 구간은 선택되지 않습니다.) 이 상태에서도 드래그로 시점을 돌릴 수 있고, 빈 곳을 클릭하면 선택이 해제됩니다.</div>
+
+      <div id="wall-height-fields" style="display:none;">
+        <div class="sub-card">
+          <div class="sub-card-title">선택한 벽 — <span id="wall-sel-name" style="color:var(--ink);text-transform:none;letter-spacing:0;"></span></div>
+          <div class="size-grid">
+            <div>
+              <label class="field-label">아래 끝 높이 (m)</label>
+              <input type="number" id="wall-bottom-m" min="0" step="0.1">
+            </div>
+            <div>
+              <label class="field-label">위 끝 높이 (m)</label>
+              <input type="number" id="wall-top-m" min="0.1" step="0.1">
+            </div>
+          </div>
+          <div class="hint">높이는 모두 바닥 기준입니다. 낮은 벽은 '위 끝'만 낮추고, 천장에서 내려오는 벽은 '아래 끝'을 올려서 만드세요. 기본값은 0 ~ 천장 높이예요. 값을 입력하고 Enter를 누르거나 칸 밖을 클릭하면 적용됩니다.</div>
+          <button class="btn" id="btn-wall-reset-height" style="margin-top:10px;">기본 높이로 되돌리기</button>
+        </div>
+      </div>
+      </div>
+    </div>
+
     <div class="footer-actions hidden" id="step-footer">
       <button class="btn" id="btn-save-scene">공간 저장하기 (.json)</button>
       <button class="btn" id="btn-screenshot" style="margin-top:8px;">스크린샷 저장</button>
@@ -635,6 +667,8 @@
   var gizmo = null;          // 3축 이동 네비게이터
   var gizmoHandles = [];     // 클릭 판정용 투명 막대
   var gizmoDrag = null;      // 드래그 중 정보
+  var wallSelectMode = false; // '벽 선택하기' 토글 상태
+  var selectedWall = null;    // 선택된 둘레 벽
   var floorPlaneY0 = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
   var raycaster = new THREE.Raycaster();
   var mouseNDC = new THREE.Vector2();
@@ -758,6 +792,12 @@
   var batchRefBottomBtn = $('batch-ref-bottom'), batchRefCenterBtn = $('batch-ref-center'), batchRefTopBtn = $('batch-ref-top');
   var batchHeightRef = 'bottom';
   var snapToggle = $('snap-toggle');
+  var stepWallHeight = $('step-wall-height');
+  var wallSelectToggle = $('wall-select-toggle');
+  var wallHeightFields = $('wall-height-fields');
+  var wallSelName = $('wall-sel-name');
+  var wallBottomInput = $('wall-bottom-m'), wallTopInput = $('wall-top-m');
+  var btnWallResetHeight = $('btn-wall-reset-height');
   var rotationPanel = $('rotation-panel');
   var rotXInput = $('rot-x'), rotYInput = $('rot-y'), rotZInput = $('rot-z');
   var selectedPanel = $('selected-panel'), selName = $('sel-name');
@@ -1416,7 +1456,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
       artworks.forEach(function(a){ scene.remove(a.group); });
       figures.forEach(function(f){ scene.remove(f.sprite); });
       artworks=[]; figures=[]; islandWalls=[];
-      selected=null; selectedIslandWall=null;
+      selected=null; selectedIslandWall=null; selectedWall=null;
       updateArtworkListUI();
       updateFigureListUI();
       updateIslandWallListUI();
@@ -1484,7 +1524,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
         wallMesh.add(wallEdges);
       }
 
-      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall, height:ceilingHeight });    }
+      walls.push({ mesh:wallMesh, p1:new THREE.Vector3(p1.x,0,p1.y), p2:new THREE.Vector3(p2.x,0,p2.y), inward:inward, length:len, dir:new THREE.Vector3(dirx,0,dirz), isOpen:isOpenWall, height:ceilingHeight, bottom:0, top:ceilingHeight });    }
     perimeterWallCount = walls.length;
 
     var xs=pts2d.map(function(p){return p.x;}), ys=pts2d.map(function(p){return p.y;});
@@ -1577,6 +1617,17 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
       mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
       raycaster.setFromCamera(mouseNDC, camera);
+
+      if(wallSelectMode){
+        // 벽 선택 모드: 그림·기즈모는 무시하고 벽만 고른다. (드래그하면 시점 회전, 제자리 클릭이면 선택)
+        var wsWalls = getPerimeterWalls().filter(function(w){ return w.mesh && !w.blocking; });
+        var wsHits = raycaster.intersectObjects(wsWalls.map(function(w){ return w.mesh; }));
+        var wsWall = wsHits.length ? wsWalls.filter(function(w){ return w.mesh === wsHits[0].object; })[0] : null;
+        orbiting = true;
+        lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+        emptyClickStart = { x:e.clientX, y:e.clientY, ctrl:false, wallMode:true, wallPick:wsWall };
+        return;
+      }
 
       if(gizmo && gizmo.visible && selected){
         var gHits = raycaster.intersectObjects(gizmoHandles);
@@ -1689,7 +1740,9 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall' || dragKind==='gizmo');
         if(emptyClickStart && !emptyClickStart.ctrl){
           var moved = Math.hypot(e.clientX-emptyClickStart.x, e.clientY-emptyClickStart.y);
-          if(moved < 5 && (multiSelectedArtworks.length || selected || selectedIslandWall)){
+          if(moved < 5 && emptyClickStart.wallMode){
+            selectWall(emptyClickStart.wallPick);
+          } else if(moved < 5 && (multiSelectedArtworks.length || selected || selectedIslandWall)){
             multiSelectedArtworks = [];
             selected = null;
             selectedIslandWall = null;
@@ -1731,6 +1784,89 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     }
     return [];
   }
+    /* ===== 벽 높이 조절 (6번 항목) ===== */
+  function selectWall(w){
+    if(selectedWall && selectedWall.mesh){ selectedWall.mesh.material.emissive.setHex(0x000000); }
+    selectedWall = w || null;
+    if(selectedWall && selectedWall.mesh){ selectedWall.mesh.material.emissive.setHex(0x5a4510); } // 선택된 벽은 금빛으로 표시
+    syncWallInputs();
+  }
+
+  function syncWallInputs(){
+    var w = selectedWall;
+    wallHeightFields.style.display = (w && wallSelectMode) ? 'block' : 'none';
+    if(!w) return;
+    var idx = getPerimeterWalls().indexOf(w) + 1;
+    wallSelName.textContent = '벽 ' + idx + ' · 길이 ' + w.length.toFixed(2) + 'm';
+    wallBottomInput.value = (w.bottom || 0).toFixed(2);
+    wallTopInput.value = (w.top || ceilingHeight).toFixed(2);
+  }
+
+  // 벽의 아래 끝(bottom)~위 끝(top) 높이를 바꾸고, 모양과 걸려 있는 그림을 다시 맞춘다
+  function setWallRange(w, bottom, top){
+    if(!w || !w.mesh) return;
+    bottom = Math.max(0, bottom);
+    top = Math.min(20, Math.max(bottom + 0.1, top));
+    w.bottom = bottom; w.top = top; w.height = top;
+
+    var h = top - bottom;
+    w.mesh.geometry.dispose();
+    w.mesh.geometry = new THREE.PlaneGeometry(w.length, h);
+    w.mesh.position.y = bottom + h/2;
+
+    for(var i = w.mesh.children.length - 1; i >= 0; i--){
+      var c = w.mesh.children[i];
+      w.mesh.remove(c);
+      if(c.geometry) c.geometry.dispose();
+    }
+    var edges = new THREE.LineSegments(new THREE.EdgesGeometry(w.mesh.geometry), islandEdgeMat);
+    edges.position.z = 0.003;
+    w.mesh.add(edges);
+
+    // 이 벽에 걸려 있던 그림이 벽 범위를 벗어나지 않도록 다시 배치
+    artworks.forEach(function(a){
+      if(a.wall !== w || !a.snapped) return;
+      var dir = a.faceOutward ? w.inward.clone().negate() : w.inward;
+      var pt = a.group.position.clone().addScaledVector(dir, -0.015);
+      var half = a.h / 2, lo = bottom + half, hi = top - half;
+      pt.y = hi >= lo ? Math.max(lo, Math.min(hi, a.group.position.y)) : (bottom + top) / 2;
+      placeOnWall(a, w, pt);
+      if(a.heightLocked) applyHeightLock(a);
+    });
+  }
+
+  function applyWallInputs(){
+    if(!selectedWall) return;
+    var b = parseFloat(wallBottomInput.value), t = parseFloat(wallTopInput.value);
+    if(isNaN(b)) b = selectedWall.bottom || 0;
+    if(isNaN(t)) t = selectedWall.top || ceilingHeight;
+    setWallRange(selectedWall, b, t);
+    syncWallInputs();
+    pushHistory();
+  }
+
+  wallBottomInput.addEventListener('change', applyWallInputs);
+  wallTopInput.addEventListener('change', applyWallInputs);
+
+  btnWallResetHeight.addEventListener('click', function(){
+    if(!selectedWall) return;
+    setWallRange(selectedWall, 0, ceilingHeight);
+    syncWallInputs();
+    pushHistory();
+  });
+
+  wallSelectToggle.addEventListener('change', function(){
+    wallSelectMode = wallSelectToggle.checked;
+    if(!wallSelectMode) selectWall(null);
+    syncWallInputs();
+  });
+
+  // 6번 섹션은 가벽 섹션(5번)과 같은 시점에 나타나게 맞춘다 (매 프레임 호출)
+  function updateWallStepVisibility(){
+    stepWallHeight.classList.toggle('hidden', stepIslandWalls.classList.contains('hidden'));
+    if(!selectedWall) wallHeightFields.style.display = 'none';
+  }
+
   /* ===== 3축 이동 네비게이터(기즈모) ===== */
   function createGizmo(){
     gizmo = new THREE.Group();
@@ -1789,7 +1925,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   // 스냅이 꺼져 있고 그림이 선택돼 있을 때만 보이게, 화면에서 항상 비슷한 크기로
   function updateGizmo(){
     if(!gizmo || !camera) return;
-    var show = !!selected && selected.snapOn === false;
+    var show = !!selected && selected.snapOn === false && !wallSelectMode;
     gizmo.visible = show;
     if(!show) return;
     gizmo.position.copy(selected.group.position);
@@ -1993,7 +2129,8 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
  function placeOnWall(art, wall, point){
     var dir = art.faceOutward ? wall.inward.clone().negate() : wall.inward;
     var maxH = (wall && wall.height) ? wall.height : ceilingHeight;
-    var y = Math.max(art.h/2*0.2, Math.min(maxH-0.02, point.y));
+    var minY = (wall && wall.bottom) ? wall.bottom + art.h/2*0.2 : art.h/2*0.2;
+    var y = Math.max(minY, Math.min(maxH-0.02, point.y));
     var pos = point.clone(); pos.y = y;
     pos.addScaledVector(dir, 0.015);
     art.group.position.copy(pos);
@@ -2936,7 +3073,10 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var openEdgesArr = perim.map(function(w){ return !!w.isOpen; });
     return {
       version: 2,
-      room: { points: roomPoints, ceilingHeight: ceilingHeight, openEdges: openEdgesArr },
+      room: {
+        points: roomPoints, ceilingHeight: ceilingHeight, openEdges: openEdgesArr,
+        wallRanges: perim.map(function(w){ return { bottom: w.bottom || 0, top: w.top || ceilingHeight }; })
+      },
       artworks: artworks.map(function(a){
         var img = a.plane.material[4].map.image;
         return {
@@ -3087,6 +3227,10 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     lensHud.classList.remove('hidden');
 
     buildRoom(pts2d);
+    (data.room.wallRanges || []).forEach(function(r, i){
+      var pw = getPerimeterWalls()[i];
+      if(pw && pw.mesh) setWallRange(pw, r.bottom || 0, r.top || ceilingHeight);
+    });
     onResize();
     requestAnimationFrame(function(){ onResize(); animate(); });
 
@@ -3505,7 +3649,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       updateSnapUI();
       updateGizmo();
       updateRotationReadouts();
-      if(renderer) renderer.render(scene, camera);
+      updateWallStepVisibility();
     })();
   }
 
