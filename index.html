@@ -1366,7 +1366,7 @@ var islandWallPanel = $('island-wall-panel'), iwLength = $('iw-length'), iwThick
     onResize();
     requestAnimationFrame(function(){ onResize(); animate(); });
     historySuppressed = false;
-    undoStack = []; redoStack = [];
+    undoStack = []; redoStack = []; imagePool = {};
     pushHistory();
   });
 
@@ -1861,14 +1861,18 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   var undoStack = [];
   var redoStack = [];
   var historySuppressed = false;
-  var UNDO_LIMIT = 20; // 메모리가 부담되면 이 숫자를 줄이세요.
+  var UNDO_LIMIT = 5;
+
+  // 그림 이미지 데이터를 한 곳에만 보관하고, 되돌리기 스냅샷들은 그 이미지의
+  // id만 참조합니다. (예전에는 스냅샷마다 모든 그림의 이미지 전체를 통째로
+  // 복사해서 20단계면 이미지 데이터가 최대 20배로 불어났습니다.)
+  var imagePool = {};
 
   function snapshotState(){
     return {
       artworks: artworks.map(function(a){
-        var mat = Array.isArray(a.plane.material) ? a.plane.material[4] : a.plane.material;
         return {
-          name:a.name, dataUrl: mat.map.image.src,
+          name:a.name, imageId: a.id,
           w:a.w, h:a.h, d:a.d,
           position:{x:a.group.position.x, y:a.group.position.y, z:a.group.position.z},
           quaternion:{x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w},
@@ -1909,9 +1913,11 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
     var promises = (data.artworks||[]).map(function(saved){
       return new Promise(function(resolve){
+        var poolUrl = imagePool[saved.imageId];
+        if(!poolUrl){ resolve(); return; } // 이미지를 찾을 수 없으면 건너뜀 (정상적으론 발생하지 않음)
         var image = new Image();
         image.onload = function(){
-          createArtwork(image, saved.dataUrl, saved.name, saved.w, saved.h);
+          createArtwork(image, poolUrl, saved.name, saved.w, saved.h, saved.imageId);
           var a = artworks[artworks.length-1];
           if(saved.d) resizeArtworkDepth(a, saved.d);
           a.group.position.set(saved.position.x, saved.position.y, saved.position.z);
@@ -1933,7 +1939,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           }
           resolve();
         };
-        image.src = saved.dataUrl;
+        image.src = poolUrl;
       });
     });
 
@@ -1999,6 +2005,29 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     processNextUpload();
   });
 
+  // 업로드되거나 저장 파일에서 불러온 이미지가 너무 크면(고해상도 원본 사진 등)
+  // 자동으로 줄여줍니다. 브라우저 탭이 메모리 부족으로 죽는 것을 예방하기 위한 장치입니다.
+  var IMAGE_MAX_DIM = 1800;
+  var IMAGE_JPEG_QUALITY = 0.85;
+  function resizeImageIfNeeded(image, dataUrl, cb){
+    var w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+    if(!w || !h || Math.max(w,h) <= IMAGE_MAX_DIM){
+      cb(image, dataUrl);
+      return;
+    }
+    var scale = IMAGE_MAX_DIM / Math.max(w,h);
+    var tw = Math.max(1, Math.round(w*scale)), th = Math.max(1, Math.round(h*scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = tw; canvas.height = th;
+    var cctx = canvas.getContext('2d');
+    cctx.drawImage(image, 0, 0, tw, th);
+    var resizedUrl = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+    var resizedImg = new Image();
+    resizedImg.onload = function(){ cb(resizedImg, resizedUrl); };
+    resizedImg.onerror = function(){ cb(image, dataUrl); }; // 혹시 실패하면 원본 그대로 사용
+    resizedImg.src = resizedUrl;
+  }
+
   function processNextUpload(){
     if(modalBusy) return;
     var file = uploadQueue.shift();
@@ -2008,11 +2037,13 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     reader.onload = function(ev){
       var image = new Image();
       image.onload = function(){
-        currentUploadImage = image;
-        currentUploadDataUrl = ev.target.result;
-        currentUploadName = file.name;
-        currentUploadAspect = image.naturalWidth / image.naturalHeight;
-        openSizeModal();
+        resizeImageIfNeeded(image, ev.target.result, function(finalImage, finalDataUrl){
+          currentUploadImage = finalImage;
+          currentUploadDataUrl = finalDataUrl;
+          currentUploadName = file.name;
+          currentUploadAspect = finalImage.naturalWidth / finalImage.naturalHeight;
+          openSizeModal();
+        });
       };
       image.src = ev.target.result;
     };
@@ -2069,7 +2100,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   var artGroupCounter = 1;
   var multiSelectedArtworks = [];
 
-  function createArtwork(image, dataUrl, name, wMeters, hMeters){
+  function createArtwork(image, dataUrl, name, wMeters, hMeters, forcedId){
     var w=wMeters, h=hMeters;
     var d=0.02; // 기본 두께 2cm
     var tex = new THREE.Texture(image);
@@ -2100,8 +2131,9 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       roll:0, snapped:false, heightLocked:false,
       heightLockRef:'bottom', heightLockValue:0,
       groupId:null, faceOutward:false,
-      id:'art'+(artCount++)
+      id: forcedId || ('art'+(artCount++))
     };
+    imagePool[art.id] = dataUrl;
     artworks.push(art);
     updateArtworkOutlineScale(art);
     if(walls.length){
@@ -2771,29 +2803,31 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       return new Promise(function(resolve){
         var image = new Image();
         image.onload = function(){
-          createArtwork(image, saved.dataUrl, saved.name, saved.w, saved.h);
-          var newArt = artworks[artworks.length-1];
-          if(saved.d) resizeArtworkDepth(newArt, saved.d);
-          newArt.group.position.set(saved.position.x, saved.position.y, saved.position.z);
-          newArt.group.quaternion.set(saved.quaternion.x, saved.quaternion.y, saved.quaternion.z, saved.quaternion.w);
-          newArt.roll = saved.roll||0;
-          newArt.snapped = !!saved.snapped;
-          newArt.heightLocked = !!saved.heightLocked;
-          newArt.heightLockRef = saved.heightLockRef||'bottom';
-          newArt.heightLockValue = saved.heightLockValue||0;
-          newArt.faceOutward = !!saved.faceOutward;
-          if(newArt.snapped){
-            var bestWall=null, bestD=Infinity;
-            walls.forEach(function(w){
-              var d = Math.abs(newArt.group.position.clone().sub(w.p1).dot(w.inward));
-              if(d<bestD){ bestD=d; bestWall=w; }
-            });
-            if(bestWall){
-              newArt.wall = bestWall;
-              newArt.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), bestWall.inward);
+          resizeImageIfNeeded(image, saved.dataUrl, function(finalImage, finalDataUrl){
+            createArtwork(finalImage, finalDataUrl, saved.name, saved.w, saved.h);
+            var newArt = artworks[artworks.length-1];
+            if(saved.d) resizeArtworkDepth(newArt, saved.d);
+            newArt.group.position.set(saved.position.x, saved.position.y, saved.position.z);
+            newArt.group.quaternion.set(saved.quaternion.x, saved.quaternion.y, saved.quaternion.z, saved.quaternion.w);
+            newArt.roll = saved.roll||0;
+            newArt.snapped = !!saved.snapped;
+            newArt.heightLocked = !!saved.heightLocked;
+            newArt.heightLockRef = saved.heightLockRef||'bottom';
+            newArt.heightLockValue = saved.heightLockValue||0;
+            newArt.faceOutward = !!saved.faceOutward;
+            if(newArt.snapped){
+              var bestWall=null, bestD=Infinity;
+              walls.forEach(function(w){
+                var d = Math.abs(newArt.group.position.clone().sub(w.p1).dot(w.inward));
+                if(d<bestD){ bestD=d; bestWall=w; }
+              });
+              if(bestWall){
+                newArt.wall = bestWall;
+                newArt.baseQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), bestWall.inward);
+              }
             }
-          }
-          resolve();
+            resolve();
+          });
         };
         image.src = saved.dataUrl;
       });
@@ -3224,7 +3258,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     updateFigureListUI();
     updateIslandWallListUI();
     islandWallPanel.classList.remove('show');
-    undoStack = []; redoStack = [];
+    undoStack = []; redoStack = []; imagePool = {};
   });
 
   window.addEventListener('keydown', function(e){
