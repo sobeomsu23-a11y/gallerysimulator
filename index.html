@@ -509,7 +509,7 @@
       <div class="sec-label"><span class="num">6</span>벽 높이 조절<span class="chev">▾</span></div>
       <div class="panel-body">
       <div class="toggle-row">
-        <span class="tlabel">벽 선택하기</span>
+        <span class="tlabel">벽 크기 조절</span>
         <label class="switch">
           <input type="checkbox" id="wall-select-toggle">
           <span class="slider-tg"></span>
@@ -522,18 +522,18 @@
           <div class="sub-card-title">선택한 벽 — <span id="wall-sel-name" style="color:var(--ink);text-transform:none;letter-spacing:0;"></span></div>
           <div class="size-grid">
             <div>
-              <label class="field-label">아래 끝 높이 (m)</label>
+              <label class="field-label">벽 시작 점 (m)</label>
               <input type="number" id="wall-bottom-m" min="0" step="0.1">
             </div>
             <div>
-              <label class="field-label">위 끝 높이 (m)</label>
+              <label class="field-label">벽 끝 점 (m)</label>
               <input type="number" id="wall-top-m" min="0.1" step="0.1">
             </div>
           </div>
           <div class="hint">높이는 모두 바닥 기준입니다. 낮은 벽은 '위 끝'만 낮추고, 천장에서 내려오는 벽은 '아래 끝'을 올려서 만드세요. 기본값은 0 ~ 천장 높이예요. 값을 입력하고 Enter를 누르거나 칸 밖을 클릭하면 적용됩니다.</div>
           <div id="wall-gap-box" style="display:none;margin-top:14px;">
             <div class="toggle-row">
-              <span class="tlabel">창문형 틈 만들기</span>
+              <span class="tlabel">창문 만들기</span>
               <label class="switch">
                 <input type="checkbox" id="wall-gap-toggle">
                 <span class="slider-tg"></span>
@@ -543,11 +543,11 @@
             <div id="wall-gap-fields" style="display:none;">
               <div class="size-grid">
                 <div>
-                  <label class="field-label">아래 벽의 윗끝 (m)</label>
+                  <label class="field-label">창문 아랫변 높이 (m)</label>
                   <input type="number" id="wall-gap-bottom-m" min="0" step="0.1">
                 </div>
                 <div>
-                  <label class="field-label">위 벽의 아랫끝 (m)</label>
+                  <label class="field-label">창문 윗변 높이 (m)</label>
                   <input type="number" id="wall-gap-top-m" min="0" step="0.1">
                 </div>
               </div>
@@ -691,7 +691,7 @@
   var gizmo = null;          // 3축 이동 네비게이터
   var gizmoHandles = [];     // 클릭 판정용 투명 막대
   var gizmoDrag = null;      // 드래그 중 정보
-  var wallSelectMode = false; // '벽 선택하기' 토글 상태
+  var wallSelectMode = false; // '벽 크기 조절' 토글 상태
   var selectedWall = null;    // 선택된 둘레 벽
   var floorPlaneY0 = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
   var raycaster = new THREE.Raycaster();
