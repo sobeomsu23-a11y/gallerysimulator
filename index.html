@@ -531,6 +531,28 @@
             </div>
           </div>
           <div class="hint">높이는 모두 바닥 기준입니다. 낮은 벽은 '위 끝'만 낮추고, 천장에서 내려오는 벽은 '아래 끝'을 올려서 만드세요. 기본값은 0 ~ 천장 높이예요. 값을 입력하고 Enter를 누르거나 칸 밖을 클릭하면 적용됩니다.</div>
+          <div id="wall-gap-box" style="display:none;margin-top:14px;">
+            <div class="toggle-row">
+              <span class="tlabel">창문형 틈 만들기</span>
+              <label class="switch">
+                <input type="checkbox" id="wall-gap-toggle">
+                <span class="slider-tg"></span>
+              </label>
+            </div>
+            <div class="hint">켜면 한 벽 안에 '바닥에서 올라가는 벽'과 '천장에서 내려오는 벽'이 함께 만들어지고, 그 사이가 창문처럼 뚫립니다.</div>
+            <div id="wall-gap-fields" style="display:none;">
+              <div class="size-grid">
+                <div>
+                  <label class="field-label">아래 벽의 윗끝 (m)</label>
+                  <input type="number" id="wall-gap-bottom-m" min="0" step="0.1">
+                </div>
+                <div>
+                  <label class="field-label">위 벽의 아랫끝 (m)</label>
+                  <input type="number" id="wall-gap-top-m" min="0" step="0.1">
+                </div>
+              </div>
+            </div>
+          </div>
           <button class="btn" id="btn-wall-reset-height" style="margin-top:10px;">기본 높이로 되돌리기</button>
           <button class="btn btn-primary" id="btn-wall-create" style="margin-top:10px;display:none;">이 점선 구간에 벽 만들기</button>
           <button class="btn" id="btn-wall-remove" style="margin-top:10px;display:none;">만든 벽 없애고 다시 뚫기</button>
@@ -801,6 +823,8 @@
   var wallBottomInput = $('wall-bottom-m'), wallTopInput = $('wall-top-m');
   var btnWallResetHeight = $('btn-wall-reset-height');
   var btnWallCreate = $('btn-wall-create'), btnWallRemove = $('btn-wall-remove');
+  var wallGapBox = $('wall-gap-box'), wallGapToggle = $('wall-gap-toggle'), wallGapFields = $('wall-gap-fields');
+  var wallGapBottomInput = $('wall-gap-bottom-m'), wallGapTopInput = $('wall-gap-top-m');
   var rotationPanel = $('rotation-panel');
   var rotXInput = $('rot-x'), rotYInput = $('rot-y'), rotZInput = $('rot-z');
   var selectedPanel = $('selected-panel'), selName = $('sel-name');
@@ -1816,6 +1840,13 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     wallSelName.textContent = (w.isOpen ? '뚫린 구간 ' : '벽 ') + idx + ' · 길이 ' + w.length.toFixed(2) + 'm' + (w.isOpen ? ' (점선)' : '');
     wallBottomInput.value = (w.bottom || 0).toFixed(2);
     wallTopInput.value = (w.top || ceilingHeight).toFixed(2);
+    wallGapBox.style.display = w.mesh ? 'block' : 'none';
+    wallGapToggle.checked = !!w.gap;
+    wallGapFields.style.display = w.gap ? 'block' : 'none';
+    if(w.gap){
+      wallGapBottomInput.value = w.gap.b.toFixed(2);
+      wallGapTopInput.value = w.gap.t.toFixed(2);
+    }
     btnWallCreate.style.display = w.isOpen ? 'inline-flex' : 'none';
     btnWallRemove.style.display = (w.fromOpening && w.mesh) ? 'inline-flex' : 'none';
   }
@@ -1883,17 +1914,41 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     scene.remove(w.mesh);
     w.mesh.traverse(function(o){ if(o.geometry) o.geometry.dispose(); });
     w.mesh.material.dispose();
-    w.mesh = null; w.isOpen = true; w.fromOpening = false; w.blocking = false;
+    w.mesh = null; w.isOpen = true; w.fromOpening = false; w.blocking = false; w.gap = null;
     buildOpeningGuide(w);
   }
 
   // 벽의 아래 끝(bottom)~위 끝(top) 높이를 바꾸고, 모양과 걸려 있는 그림을 다시 맞춘다
-  function setWallRange(w, bottom, top){
+  // 벽 모양 만들기: gap이 없으면 직사각형 1장, 있으면 '아래 조각 + 위 조각' 2장(가운데가 창문처럼 빔)
+  function buildWallGeometry(len, bottom, top, gap){
+    if(!gap) return new THREE.PlaneGeometry(len, top - bottom);
+    var c = (bottom + top) / 2, hw = len / 2;
+    function rect(y0, y1){
+      var s = new THREE.Shape();
+      s.moveTo(-hw, y0 - c); s.lineTo(hw, y0 - c); s.lineTo(hw, y1 - c); s.lineTo(-hw, y1 - c); s.closePath();
+      return s;
+    }
+    return new THREE.ShapeGeometry([ rect(bottom, gap.b), rect(gap.t, top) ]);
+  }
+
+  function setWallRange(w, bottom, top, gap){
     if(!w) return;
     if(!w.mesh && !w.isOpen) return;
     bottom = Math.max(0, bottom);
     top = Math.min(20, Math.max(bottom + 0.1, top));
     w.bottom = bottom; w.top = top; w.height = top;
+
+    // gap: {b, t} = 창문처럼 비울 구간. 생략하면 기존 값 유지, null이면 없앰
+    if(gap === undefined) gap = w.gap || null;
+    if(gap){
+      if(top - bottom < 0.3) gap = null;
+      else {
+        var gb = Math.min(Math.max(gap.b, bottom + 0.05), top - 0.15);
+        var gt = Math.min(Math.max(gap.t, gb + 0.05), top - 0.05);
+        gap = { b: gb, t: gt };
+      }
+    }
+    w.gap = gap;
 
     if(!w.mesh){ // 아직 벽이 없는 뚫린 구간: 점선 사각형만 새 높이로 다시 그림
       buildOpeningGuide(w);
@@ -1903,7 +1958,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
     var h = top - bottom;
     w.mesh.geometry.dispose();
-    w.mesh.geometry = new THREE.PlaneGeometry(w.length, h);
+    w.mesh.geometry = buildWallGeometry(w.length, bottom, top, w.gap);
     w.mesh.position.y = bottom + h/2;
 
     for(var i = w.mesh.children.length - 1; i >= 0; i--){
@@ -1942,10 +1997,36 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   btnWallResetHeight.addEventListener('click', function(){
     if(!selectedWall) return;
-    setWallRange(selectedWall, 0, ceilingHeight);
+    setWallRange(selectedWall, 0, ceilingHeight, null);
     syncWallInputs();
     pushHistory();
   });
+
+  wallGapToggle.addEventListener('change', function(){
+    var w = selectedWall;
+    if(!w || !w.mesh) return;
+    if(wallGapToggle.checked){
+      var b = w.bottom || 0, t = w.top || ceilingHeight, span = t - b;
+      setWallRange(w, b, t, { b: b + span * 0.3, t: b + span * 0.7 });
+    } else {
+      setWallRange(w, w.bottom, w.top, null);
+    }
+    syncWallInputs();
+    pushHistory();
+  });
+
+  function applyGapInputs(){
+    var w = selectedWall;
+    if(!w || !w.mesh || !w.gap) return;
+    var gb = parseFloat(wallGapBottomInput.value), gt = parseFloat(wallGapTopInput.value);
+    if(isNaN(gb)) gb = w.gap.b;
+    if(isNaN(gt)) gt = w.gap.t;
+    setWallRange(w, w.bottom, w.top, { b: gb, t: gt });
+    syncWallInputs();
+    pushHistory();
+  }
+  wallGapBottomInput.addEventListener('change', applyGapInputs);
+  wallGapTopInput.addEventListener('change', applyGapInputs);
 
   btnWallCreate.addEventListener('click', function(){
     if(!selectedWall || !selectedWall.isOpen) return;
@@ -3188,7 +3269,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       version: 2,
       room: {
         points: roomPoints, ceilingHeight: ceilingHeight, openEdges: openEdgesArr,
-        wallRanges: perim.map(function(w){ return { bottom: w.bottom || 0, top: w.top || ceilingHeight }; }),
+        wallRanges: perim.map(function(w){ return { bottom: w.bottom || 0, top: w.top || ceilingHeight, gap: w.gap || null }; }),
         createdOnOpening: perim.map(function(w){ return !!w.fromOpening; })
       },
       artworks: artworks.map(function(a){
@@ -3344,7 +3425,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     (data.room.wallRanges || []).forEach(function(r, i){
       var pw = getPerimeterWalls()[i];
       if(!pw) return;
-      setWallRange(pw, r.bottom || 0, r.top || ceilingHeight);
+      setWallRange(pw, r.bottom || 0, r.top || ceilingHeight, r.gap || null);
       if(pw.isOpen && (data.room.createdOnOpening || [])[i]) createWallOnOpening(pw);
     });
     onResize();
