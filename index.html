@@ -417,13 +417,13 @@
       <div class="sec-label"><span class="num">3</span>배치 옵션<span class="chev">▾</span></div>
       <div class="panel-body">
       <div class="toggle-row">
-        <span class="tlabel">벽에 자석처럼 붙이기</span>
+        <span class="tlabel">선택한 그림 벽에 자석처럼 붙이기</span>
         <label class="switch">
           <input type="checkbox" id="snap-toggle" checked>
           <span class="slider-tg"></span>
         </label>
       </div>
-      <div class="hint">켜두면 그림을 드래그할 때 가장 가까운 벽면에 자동으로 달라붙습니다. 끄면 공간 안 어디든 자유롭게 옮길 수 있어요.</div>
+      <div class="hint">그림을 선택한 뒤 설정하세요. 그림마다 따로 적용됩니다. 켜두면 드래그할 때 가장 가까운 벽면에 달라붙고, 끄면 공간 안 어디든 자유롭게 옮길 수 있어요. (Ctrl/Cmd로 여러 그림을 선택하면 한꺼번에 바뀝니다)</div>
 
       <div id="rotation-panel" style="display:none;">
         <div class="sub-card">
@@ -1789,7 +1789,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   // 스냅이 꺼져 있고 그림이 선택돼 있을 때만 보이게, 화면에서 항상 비슷한 크기로
   function updateGizmo(){
     if(!gizmo || !camera) return;
-    var show = !!selected && !snapToggle.checked;
+    var show = !!selected && selected.snapOn === false;
     gizmo.visible = show;
     if(!show) return;
     gizmo.position.copy(selected.group.position);
@@ -1859,7 +1859,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   }
   function startDragArtwork(art){
     dragging = true; orbiting = false; dragKind='artwork';
-    if(!snapToggle.checked){
+    if(art.snapOn === false){
       var camDir = new THREE.Vector3();
       camera.getWorldDirection(camDir);
       dragPlane.setFromNormalAndCoplanarPoint(camDir, art.group.position);
@@ -1950,7 +1950,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
     if(!selected) return;
     var prevPos = selected.group.position.clone();
-    if(snapToggle.checked){
+    if(selected.snapOn !== false){
       var wallMeshes = walls.filter(function(w){return w.mesh;}).map(function(w){return w.mesh;});
       var hits = raycaster.intersectObjects(wallMeshes);
       if(hits.length){
@@ -1974,7 +1974,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       var leadArcNow = (selected.snapped && selected.wall) ? arcLengthOnWall(selected.wall, selected.group.position) : null;
       groupMoveInfo.companions.forEach(function(other){
         var offset = groupMoveInfo.offsets[other.id];
-        if(leadArcNow!==null && offset!==null && offset!==undefined){
+        if(leadArcNow!==null && offset!==null && offset!==undefined && other.snapOn !== false){
           var res = pointAtArcLength(leadArcNow + offset);
           if(res){
             var pt = res.point.clone();
@@ -2086,7 +2086,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           quaternion:{x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w},
           roll:a.roll, snapped:a.snapped,
           heightLocked:a.heightLocked, heightLockRef:a.heightLockRef, heightLockValue:a.heightLockValue,
-          groupId:a.groupId, faceOutward:a.faceOutward
+          groupId:a.groupId, faceOutward:a.faceOutward, snapOn:a.snapOn !== false
         };
       }),
       figures: figures.map(function(f){
@@ -2137,6 +2137,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           a.heightLockValue = saved.heightLockValue||0;
           a.groupId = saved.groupId||null;
           a.faceOutward = !!saved.faceOutward;
+          a.snapOn = saved.snapOn !== false;
           if(a.snapped){
             var bestWall=null, bestD=Infinity;
             walls.forEach(function(w){
@@ -2336,7 +2337,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
     var art = {
       group:group, plane:plane, outline:outline, w:w, h:h, d:d, name:name,
-      roll:0, snapped:false, heightLocked:false,
+      roll:0, snapped:false, snapOn:true, heightLocked:false,
       heightLockRef:'bottom', heightLockValue:0,
       groupId:null, faceOutward:false,
       id: forcedId || ('art'+(artCount++))
@@ -2700,24 +2701,48 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   });
 
   rotateSlider.addEventListener('input', function(){
-    if(!selected || !snapToggle.checked) return;
+    if(!selected || selected.snapOn === false) return;
     selected.roll = parseFloat(rotateSlider.value);
     rotateVal.textContent = selected.roll;
     applyRoll(selected);
   });
 
-  // 스냅이 꺼지면 시점 기준 회전 슬라이더는 비활성화 (기즈모 회전 사용)
-  // 그리고 X/Y/Z 기울기 패널을 펼칩니다.
-  function updateRotateSliderState(){
-    var off = !snapToggle.checked;
-    rotateSlider.disabled = off;
-    rotateSlider.style.opacity = off ? 0.35 : 1;
-    rotateSlider.style.cursor = off ? 'not-allowed' : '';
-    rotateSlider.title = off ? '스냅을 끈 상태에서는 3D 화면의 기즈모로 회전하세요' : '';
-    rotationPanel.style.display = off ? 'block' : 'none';
+  // ---- 그림별 자석 설정 ----
+  // 토글이 영향을 줄 그림들: 여러 개 선택 중이면 그 목록, 아니면 선택한 그림 (같은 그룹 멤버 포함)
+  function getSnapTargets(){
+    var base = multiSelectedArtworks.length ? multiSelectedArtworks.slice() : (selected ? [selected] : []);
+    var out = base.slice();
+    base.forEach(function(a){
+      if(!a.groupId) return;
+      artworks.forEach(function(x){
+        if(x.groupId === a.groupId && out.indexOf(x) < 0) out.push(x);
+      });
+    });
+    return out;
   }
-  snapToggle.addEventListener('change', updateRotateSliderState);
-  updateRotateSliderState();
+
+  // 매 프레임: 토글 상태를 선택한 그림에 맞춰 표시하고, 회전 슬라이더/기울기 패널을 갱신
+  function updateSnapUI(){
+    var targets = getSnapTargets();
+    var has = targets.length > 0;
+    var allOn = has ? targets.every(function(a){ return a.snapOn !== false; }) : true;
+    if(snapToggle.checked !== allOn) snapToggle.checked = allOn;
+    snapToggle.disabled = !has;
+    snapToggle.parentElement.style.opacity = has ? 1 : 0.4;
+
+    var free = !!selected && selected.snapOn === false;
+    rotateSlider.disabled = free;
+    rotateSlider.style.opacity = free ? 0.35 : 1;
+    rotateSlider.style.cursor = free ? 'not-allowed' : '';
+    rotateSlider.title = free ? '자석을 끈 그림은 3D 화면의 기즈모로 회전하세요' : '';
+    rotationPanel.style.display = free ? 'block' : 'none';
+  }
+
+  snapToggle.addEventListener('change', function(){
+    var on = snapToggle.checked;
+    getSnapTargets().forEach(function(a){ a.snapOn = on; });
+    pushHistory();
+  });
 
   // ---- X/Y/Z 기울기 표시 · 입력 ----
   // 오일러 각 순서 'YXZ': Y = 좌우 방향(요), X = 앞뒤 기울기(피치), Z = 면 안에서의 회전(롤)
@@ -2730,7 +2755,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   // 현재 그림의 회전값을 입력칸에 반영 (매 프레임 호출)
   function updateRotationReadouts(){
-    var enabled = !!selected && !snapToggle.checked;
+    var enabled = !!selected && selected.snapOn === false;
     [rotXInput, rotYInput, rotZInput].forEach(function(el){ el.disabled = !enabled; });
     if(!enabled){
       if(!selected){ rotXInput.value = ''; rotYInput.value = ''; rotZInput.value = ''; }
@@ -2747,7 +2772,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
   // 숫자를 입력하면 그 각도로 회전
   function applyRotationInputs(){
-    if(!selected || snapToggle.checked) return;
+    if(!selected || selected.snapOn !== false) return;
     var rad = THREE.MathUtils.degToRad;
     var eu = new THREE.Euler(
       rad(parseFloat(rotXInput.value) || 0),
@@ -2922,7 +2947,8 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           quaternion: { x:a.group.quaternion.x, y:a.group.quaternion.y, z:a.group.quaternion.z, w:a.group.quaternion.w },
           roll: a.roll, snapped: a.snapped,
           heightLocked: a.heightLocked, heightLockRef: a.heightLockRef, heightLockValue: a.heightLockValue,
-          faceOutward: a.faceOutward
+          faceOutward: a.faceOutward,
+          snapOn: a.snapOn !== false
         };
       }),
       figures: figures.map(function(f){
@@ -3080,6 +3106,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
             newArt.heightLockRef = saved.heightLockRef||'bottom';
             newArt.heightLockValue = saved.heightLockValue||0;
             newArt.faceOutward = !!saved.faceOutward;
+            newArt.snapOn = saved.snapOn !== false;
             if(newArt.snapped){
               var bestWall=null, bestD=Infinity;
               walls.forEach(function(w){
@@ -3475,6 +3502,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       updateKeyboardMovement(dt);
       if(selected) updateDistanceReadouts(selected);
       updateWallAutoTransparency();
+      updateSnapUI();
       updateGizmo();
       updateRotationReadouts();
       if(renderer) renderer.render(scene, camera);
