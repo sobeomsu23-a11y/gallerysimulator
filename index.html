@@ -1557,7 +1557,12 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
       if(gizmo && gizmo.visible && selected){
         var gHits = raycaster.intersectObjects(gizmoHandles);
-        if(gHits.length){ startGizmoDrag(gHits[0].object.userData.axis); return; }
+        if(gHits.length){
+          var gd = gHits[0].object.userData;
+          if(gd.kind === 'rotate') startGizmoRotate(gd.axis);
+          else startGizmoDrag(gd.axis);
+          return;
+        }
       }
 
       var artMeshes = artworks.map(function(a){return a.plane;});
@@ -1724,11 +1729,37 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
         new THREE.MeshBasicMaterial({ visible:false })
       );
       hit.userData.axis = def.axis;
+      hit.userData.kind = 'move';
       g.add(shaft, head, hit);
       def.rot(g);
       gizmo.add(g);
       gizmoHandles.push(hit);
     });
+    // ---- 회전 핸들: 각 축 사이의 사분원(라이노 스타일) ----
+    var AX = { x:new THREE.Vector3(1,0,0), y:new THREE.Vector3(0,1,0), z:new THREE.Vector3(0,0,1) };
+    var arcDefs = [
+      { axis:'x', color:0xe53935, basis:[AX.y, AX.z, AX.x] }, // YZ 평면 (X축 회전)
+      { axis:'y', color:0x43a047, basis:[AX.z, AX.x, AX.y] }, // ZX 평면 (Y축 회전)
+      { axis:'z', color:0x1e66f5, basis:[AX.x, AX.y, AX.z] }  // XY 평면 (Z축 회전)
+    ];
+    var arcStart = THREE.MathUtils.degToRad(12), arcLen = THREE.MathUtils.degToRad(66);
+    arcDefs.forEach(function(def){
+      var mat = new THREE.MeshBasicMaterial({ color:def.color, depthTest:false, transparent:true });
+      var arc = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.018, 8, 24, arcLen).rotateZ(arcStart), mat);
+      arc.renderOrder = 999;
+      var arcHit = new THREE.Mesh(
+        new THREE.TorusGeometry(0.5, 0.07, 8, 24, arcLen).rotateZ(arcStart),
+        new THREE.MeshBasicMaterial({ visible:false })
+      );
+      arcHit.userData.axis = def.axis;
+      arcHit.userData.kind = 'rotate';
+      var holder = new THREE.Group();
+      holder.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(def.basis[0], def.basis[1], def.basis[2]));
+      holder.add(arc, arcHit);
+      gizmo.add(holder);
+      gizmoHandles.push(arcHit);
+    });
+
     scene.add(gizmo);
   }
 
@@ -1759,6 +1790,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     var t = gizmoAxisParam(origin, axis);
     if(t === null) return;
     gizmoDrag = {
+      kind: 'move',
       axis: axis, origin: origin, startT: t,
       companions: getMoveCompanions(selected).map(function(c){
         return { art:c, start:c.group.position.clone() };
@@ -1767,6 +1799,34 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     dragging = true; orbiting = false; dragKind = 'gizmo';
   }
 
+  var gizmoPlane = new THREE.Plane();
+
+  // 회전 평면 위에서 마우스 광선이 가리키는 점의 각도(rad)
+  function gizmoPlaneAngle(){
+    var pt = new THREE.Vector3();
+    if(!raycaster.ray.intersectPlane(gizmoPlane, pt)) return null;
+    var v = pt.sub(gizmoDrag.pivot);
+    return Math.atan2(v.dot(gizmoDrag.w), v.dot(gizmoDrag.u));
+  }
+
+  function startGizmoRotate(axisName){
+    var A = axisName==='x' ? new THREE.Vector3(1,0,0)
+          : axisName==='y' ? new THREE.Vector3(0,1,0)
+          : new THREE.Vector3(0,0,1);
+    var pivot = selected.group.position.clone();
+    gizmoPlane.setFromNormalAndCoplanarPoint(A, pivot);
+    var ref = Math.abs(A.y) > 0.9 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+    var u = ref.sub(A.clone().multiplyScalar(ref.dot(A))).normalize();
+    var w = A.clone().cross(u);
+    var items = [selected].concat(getMoveCompanions(selected)).map(function(a){
+      return { art:a, startPos:a.group.position.clone(), startQuat:a.group.quaternion.clone() };
+    });
+    gizmoDrag = { kind:'rotate', axis:A, pivot:pivot, u:u, w:w, last:null, total:0, items:items };
+    var a0 = gizmoPlaneAngle();
+    if(a0 === null){ gizmoDrag = null; return; }
+    gizmoDrag.last = a0;
+    dragging = true; orbiting = false; dragKind = 'gizmo';
+  }
   function moveAlongAxis(art, start, axis, delta){
     var p = start.clone().addScaledVector(axis, delta);
     p.y = Math.max(art.h/2*0.2, Math.min(ceilingHeight-0.02, p.y));
@@ -1809,7 +1869,38 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
     if(dragKind === 'gizmo'){
       if(!gizmoDrag || !selected) return;
+
+      if(gizmoDrag.kind === 'rotate'){
+        var ga = gizmoPlaneAngle();
+        if(ga === null) return;
+        var step = ga - gizmoDrag.last;
+        while(step > Math.PI) step -= Math.PI*2;
+        while(step < -Math.PI) step += Math.PI*2;
+        gizmoDrag.total += step;
+        gizmoDrag.last = ga;
+        var ang = gizmoDrag.total;
+        if(e.shiftKey){ var inc = Math.PI/12; ang = Math.round(ang/inc)*inc; } // Shift: 15° 단위
+        var gq = new THREE.Quaternion().setFromAxisAngle(gizmoDrag.axis, ang);
+        gizmoDrag.items.forEach(function(it){
+          it.art.group.quaternion.copy(gq).multiply(it.startQuat);
+          it.art.group.position.copy(gizmoDrag.pivot).add(it.startPos.clone().sub(gizmoDrag.pivot).applyQuaternion(gq));
+          it.art.snapped = false;
+          if(it.art.heightLocked) applyHeightLock(it.art);
+        });
+        updateDistanceReadouts(selected);
+        return;
+      }
+
       var gt = gizmoAxisParam(gizmoDrag.origin, gizmoDrag.axis);
+      if(gt === null) return;
+      var gDelta = gt - gizmoDrag.startT;
+      moveAlongAxis(selected, gizmoDrag.origin, gizmoDrag.axis, gDelta);
+      gizmoDrag.companions.forEach(function(c){
+        moveAlongAxis(c.art, c.start, gizmoDrag.axis, gDelta);
+      });
+      updateDistanceReadouts(selected);
+      return;
+    }
       if(gt === null) return;
       var gDelta = gt - gizmoDrag.startT;
       moveAlongAxis(selected, gizmoDrag.origin, gizmoDrag.axis, gDelta);
@@ -1941,10 +2032,8 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     if(art.snapped && art.baseQuat){
       art.group.quaternion.copy(art.baseQuat).multiply(rollQ);
     } else {
-      var camDir = new THREE.Vector3();
-      camera.getWorldDirection(camDir);
-      var baseQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), camDir.clone().negate());
-      art.group.quaternion.copy(baseQ).multiply(rollQ);
+      // 스냅이 해제된 그림은 현재 방향(quaternion)을 그대로 유지합니다.
+      // 방향은 기즈모 회전 핸들로만 바꿉니다.
     }
   }
 
@@ -2597,7 +2686,22 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
   });
 
   rotateSlider.addEventListener('input', function(){
-    if(!selected) return;
+    if(!selected || !snapToggle.checked) return;
+    selected.roll = parseFloat(rotateSlider.value);
+    rotateVal.textContent = selected.roll;
+    applyRoll(selected);
+  });
+
+  // 스냅이 꺼지면 시점 기준 회전 슬라이더는 비활성화 (기즈모 회전 사용)
+  function updateRotateSliderState(){
+    var off = !snapToggle.checked;
+    rotateSlider.disabled = off;
+    rotateSlider.style.opacity = off ? 0.35 : 1;
+    rotateSlider.style.cursor = off ? 'not-allowed' : '';
+    rotateSlider.title = off ? '스냅을 끈 상태에서는 3D 화면의 기즈모로 회전하세요' : '';
+  }
+  snapToggle.addEventListener('change', updateRotateSliderState);
+  updateRotateSliderState();
     selected.roll = parseFloat(rotateSlider.value);
     rotateVal.textContent = selected.roll;
     applyRoll(selected);
