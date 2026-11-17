@@ -611,6 +611,9 @@
   var draggedFigure = null;
   var draggedIslandWall = null;
   var dragPlane = new THREE.Plane();
+  var gizmo = null;          // 3축 이동 네비게이터
+  var gizmoHandles = [];     // 클릭 판정용 투명 막대
+  var gizmoDrag = null;      // 드래그 중 정보
   var floorPlaneY0 = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
   var raycaster = new THREE.Raycaster();
   var mouseNDC = new THREE.Vector2();
@@ -1486,6 +1489,7 @@ var dir1 = new THREE.DirectionalLight(0xffffff, 0.9); dir1.position.set(6,10,4);
 var dir2 = new THREE.DirectionalLight(0xffffff, 0.45); dir2.position.set(-6,6,-4); scene.add(dir2);
 var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
 
+    createGizmo();
     attachInteraction();
     window.addEventListener('resize', onResize);
   }
@@ -1550,6 +1554,11 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
       mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
       raycaster.setFromCamera(mouseNDC, camera);
+
+      if(gizmo && gizmo.visible && selected){
+        var gHits = raycaster.intersectObjects(gizmoHandles);
+        if(gHits.length){ startGizmoDrag(gHits[0].object.userData.axis); return; }
+      }
 
       var artMeshes = artworks.map(function(a){return a.plane;});
       var figMeshes = figures.map(function(f){return f.sprite;});
@@ -1649,7 +1658,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
           delete activeTouches[e.pointerId];
           if(Object.keys(activeTouches).length < 2) twoFingerPanning = false;
         }
-        var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall');
+  var wasPlacementDrag = dragging && (dragKind==='artwork' || dragKind==='figure' || dragKind==='islandwall' || dragKind==='gizmo');
         if(emptyClickStart && !emptyClickStart.ctrl){
           var moved = Math.hypot(e.clientX-emptyClickStart.x, e.clientY-emptyClickStart.y);
           if(moved < 5 && (multiSelectedArtworks.length || selected || selectedIslandWall)){
@@ -1670,6 +1679,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
         dragKind = null;
         draggedFigure = null;
         draggedIslandWall = null;
+        gizmoDrag = null;
         if(wasPlacementDrag) pushHistory();
       }
       window.addEventListener('pointerup', handlePointerUp);
@@ -1693,7 +1703,77 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     }
     return [];
   }
+  /* ===== 3축 이동 네비게이터(기즈모) ===== */
+  function createGizmo(){
+    gizmo = new THREE.Group();
+    gizmo.visible = false;
+    var defs = [
+      { axis:'x', color:0xe53935, rot:function(g){ g.rotation.z = -Math.PI/2; } },
+      { axis:'y', color:0x43a047, rot:function(g){} },
+      { axis:'z', color:0x1e66f5, rot:function(g){ g.rotation.x = Math.PI/2; } }
+    ];
+    defs.forEach(function(def){
+      var g = new THREE.Group();
+      var mat = new THREE.MeshBasicMaterial({ color:def.color, depthTest:false, transparent:true });
+      var shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.8,8).translate(0,0.4,0), mat);
+      var head  = new THREE.Mesh(new THREE.ConeGeometry(0.04,0.2,16).translate(0,0.9,0), mat);
+      shaft.renderOrder = 999; head.renderOrder = 999;
+      // 클릭하기 쉽도록 더 굵은 투명 막대
+      var hit = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07,0.07,1,8).translate(0,0.5,0),
+        new THREE.MeshBasicMaterial({ visible:false })
+      );
+      hit.userData.axis = def.axis;
+      g.add(shaft, head, hit);
+      def.rot(g);
+      gizmo.add(g);
+      gizmoHandles.push(hit);
+    });
+    scene.add(gizmo);
+  }
 
+  // 스냅이 꺼져 있고 그림이 선택돼 있을 때만 보이게, 화면에서 항상 비슷한 크기로
+  function updateGizmo(){
+    if(!gizmo || !camera) return;
+    var show = !!selected && !snapToggle.checked;
+    gizmo.visible = show;
+    if(!show) return;
+    gizmo.position.copy(selected.group.position);
+    gizmo.scale.setScalar(camera.position.distanceTo(gizmo.position) * 0.18);
+  }
+
+  // 마우스 광선과 가장 가까운 '축 위의 점'의 위치(t)를 구함
+  function gizmoAxisParam(origin, axis){
+    var r = raycaster.ray.direction, w = origin.clone().sub(raycaster.ray.origin);
+    var b = axis.dot(r), d = axis.dot(w), e = r.dot(w);
+    var denom = 1 - b*b;
+    if(Math.abs(denom) < 1e-4) return null; // 축과 시선이 평행
+    return (b*e - d) / denom;
+  }
+
+  function startGizmoDrag(axisName){
+    var axis = axisName==='x' ? new THREE.Vector3(1,0,0)
+             : axisName==='y' ? new THREE.Vector3(0,1,0)
+             : new THREE.Vector3(0,0,1);
+    var origin = selected.group.position.clone();
+    var t = gizmoAxisParam(origin, axis);
+    if(t === null) return;
+    gizmoDrag = {
+      axis: axis, origin: origin, startT: t,
+      companions: getMoveCompanions(selected).map(function(c){
+        return { art:c, start:c.group.position.clone() };
+      })
+    };
+    dragging = true; orbiting = false; dragKind = 'gizmo';
+  }
+
+  function moveAlongAxis(art, start, axis, delta){
+    var p = start.clone().addScaledVector(axis, delta);
+    p.y = Math.max(art.h/2*0.2, Math.min(ceilingHeight-0.02, p.y));
+    art.group.position.copy(p);
+    art.snapped = false;   // 회전(quaternion)은 그대로 유지
+    if(art.heightLocked) applyHeightLock(art);
+  }
   function startDragArtwork(art){
     dragging = true; orbiting = false; dragKind='artwork';
     if(!snapToggle.checked){
@@ -1726,6 +1806,19 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
     mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
     mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
     raycaster.setFromCamera(mouseNDC, camera);
+
+    if(dragKind === 'gizmo'){
+      if(!gizmoDrag || !selected) return;
+      var gt = gizmoAxisParam(gizmoDrag.origin, gizmoDrag.axis);
+      if(gt === null) return;
+      var gDelta = gt - gizmoDrag.startT;
+      moveAlongAxis(selected, gizmoDrag.origin, gizmoDrag.axis, gDelta);
+      gizmoDrag.companions.forEach(function(c){
+        moveAlongAxis(c.art, c.start, gizmoDrag.axis, gDelta);
+      });
+      updateDistanceReadouts(selected);
+      return;
+    }
 
     if(dragKind === 'figure'){
       if(!draggedFigure) return;
@@ -3222,6 +3315,7 @@ var amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
       updateKeyboardMovement(dt);
       if(selected) updateDistanceReadouts(selected);
       updateWallAutoTransparency();
+      updateGizmo();
       if(renderer) renderer.render(scene, camera);
     })();
   }
